@@ -77,9 +77,9 @@ let type_constr_conv_expr ~loc longident ~f args =
     | args -> eapply ~loc expr args)
 ;;
 
-let type_constr_conv_pat longident ~f =
+let type_constr_conv_pat ~loc longident ~f =
   let f ~functor_ x = f ?functor_ x in
-  type_constr_conv_and_apply ~loc:longident.loc longident ~f (fun ~loc ident _ ->
+  type_constr_conv_and_apply ~loc longident ~f (fun ~loc ident _ ->
     match ident.txt with
     | Lident name -> ppat_var ~loc { loc; txt = name }
     | _ ->

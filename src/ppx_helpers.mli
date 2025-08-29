@@ -62,7 +62,8 @@ val type_constr_conv_expr
     simple identifier, without any dots or functors. This is because e.g. [sexp_of_t] is a
     valid pattern, but [A.B.sexp_of_foo] is not a pattern. *)
 val type_constr_conv_pat
-  :  Longident.t loc
+  :  loc:Location.t
+  -> Longident.t loc
   -> f:(?functor_:string -> string -> string)
   -> pattern
 
