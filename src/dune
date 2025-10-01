@@ -1,5 +1,6 @@
 (library
  (name ppx_helpers)
  (public_name ppx_helpers)
- (libraries compiler-libs.common ppxlib ppxlib.stdppx)
- (preprocess no_preprocessing))
+ (libraries compiler-libs.common ppxlib ppxlib_jane ppxlib.stdppx)
+ (preprocess
+  (pps ppxlib.metaquot)))
