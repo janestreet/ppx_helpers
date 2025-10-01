@@ -2,21 +2,65 @@ open! Stdppx
 open Ppxlib
 open Ast_builder.Default
 
-let hide_from_docs ~loc sigis =
-  List.concat [ [ [%sigi: (**/**)] ]; sigis; [ [%sigi: (**/**)] ] ]
+let ghoster =
+  object
+    inherit Ast_traverse.map
+    method! location l = { l with loc_ghost = true }
+  end
 ;;
 
-let[@tail_mod_cons] rec simplify_doc_toggling = function
-  | [%sigi: (**/**)] :: [%sigi: (**/**)] :: rest -> simplify_doc_toggling rest
-  | sigi :: rest -> sigi :: simplify_doc_toggling rest
-  | [] -> []
+module Docs = struct
+  type t =
+    | Toggle
+    | Inline
+    | Doc of string
+
+  let of_attribute = function
+    | { attr_name = { txt = "ocaml.doc" | "ocaml.text"; loc = _ }
+      ; attr_payload =
+          PStr
+            [%str
+              [%e?
+                { pexp_desc = Pexp_constant (Pconst_string (contents, _loc, _delim)); _ }]]
+      ; _
+      } ->
+      Some
+        (match contents with
+         | "/*" -> Toggle
+         | " @inline " -> Inline
+         | _ -> Doc contents)
+    | _ -> None
+  ;;
+
+  let hide ~loc sigis = List.concat [ [ [%sigi: (**/**)] ]; sigis; [ [%sigi: (**/**)] ] ]
+
+  let[@tail_mod_cons] rec simplify = function
+    | [%sigi: (**/**)] :: [%sigi: (**/**)] :: rest -> simplify rest
+    | sigi :: rest -> sigi :: simplify rest
+    | [] -> []
+  ;;
+end
+
+let is_implicit_unboxed typename = String.is_suffix typename ~suffix:"#"
+
+let drop_unboxed_suffix typename =
+  if String.is_suffix typename ~suffix:"#"
+  then String.drop_suffix typename 1, true
+  else typename, false
 ;;
 
 let demangle_template typename =
+  let typename, unboxed = drop_unboxed_suffix typename in
   List.init ~len:(String.length typename - 1) ~f:Fn.id
   |> List.find_opt ~f:(fun i -> Char.(typename.[i] = '_' && typename.[i + 1] = '_'))
   |> Option.map ~f:(fun i -> String.prefix typename i, String.drop_prefix typename i)
   |> Option.value ~default:(typename, "")
+  |> if unboxed then fun (typename, mangling) -> typename ^ "_u", mangling else Fn.id
+;;
+
+let mangle_unboxed typename =
+  let typename, mangling = demangle_template typename in
+  typename ^ mangling
 ;;
 
 (* These are private functions taken from [Ppxlib.Ast_builder] with minor adjustments to
@@ -93,10 +137,6 @@ let type_constr_conv_pat ~loc longident ~f =
            (Longident.name longident.txt)))
 ;;
 
-let mangle_unboxed name =
-  if String.is_suffix name ~suffix:"#" then String.drop_suffix name 1 ^ "_u" else name
-;;
-
 let has_unboxed_attribute td =
   List.exists td.ptype_attributes ~f:(fun attr ->
     match attr.attr_name.txt with
@@ -134,4 +174,39 @@ let with_implicit_unboxed_records ~unboxed tds =
       match implicit_unboxed_record td with
       | None -> [ td ]
       | Some td_u -> [ td; td_u ])
+;;
+
+module Polytype = struct
+  type t =
+    { loc : Location.t
+    ; vars : (string loc * Ppxlib_jane.jkind_annotation option) list
+    ; body : core_type
+    }
+
+  let to_core_type
+    ?(universally_quantify_only_if_jkind_annotation = false)
+    { loc; vars; body }
+    =
+    let universally_quantify =
+      match universally_quantify_only_if_jkind_annotation with
+      | false -> true
+      | true -> List.exists vars ~f:(fun (_name, jkind) -> Option.is_some jkind)
+    in
+    if universally_quantify
+    then Ppxlib_jane.Ast_builder.Default.ptyp_poly ~loc vars body
+    else body
+  ;;
+end
+
+let combinator_type_of_type_declaration td ~f =
+  (* We have to name the params first to avoid repeating the gensym for [ptyp_any]. *)
+  let td = name_type_params_in_td td in
+  let result_type = f ~loc:td.ptype_name.loc (core_type_of_type_declaration td) in
+  let vars = List.map td.ptype_params ~f:Ppxlib_jane.get_type_param_name_and_jkind in
+  let t =
+    List.fold_right td.ptype_params ~init:result_type ~f:(fun (tp, _variance) acc ->
+      let loc = tp.ptyp_loc in
+      ptyp_arrow ~loc Nolabel (f ~loc tp) acc)
+  in
+  ({ loc = td.ptype_loc; vars; body = t } : Polytype.t)
 ;;

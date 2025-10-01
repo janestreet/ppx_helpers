@@ -3,16 +3,35 @@ open Ppxlib
 
 (** Common utility functions for PPXs that we may eventually upstream to ppxlib *)
 
-(** [hide_from_docs] surrounds a list of signature items with the [(**/**)] comment, which
-    toggles odoc generation. *)
-val hide_from_docs : loc:Location.t -> signature_item list -> signature_item list
+(** Ast-mapper that ghosts all locations *)
+val ghoster : Ast_traverse.map
 
-(** [simplify_doc_toggling] removes consecutive [(**/**)] attributes in a signature *)
-val simplify_doc_toggling : signature_item list -> signature_item list
+(** Utilities for manipulating doc comments *)
+
+module Docs : sig
+  type t =
+    | Toggle (** [(**/**)] *)
+    | Inline (** [(** @inline *)] *)
+    | Doc of string (** [(** <doc> *)] *)
+
+  (** Check whether this attribute is a doc comment and characterize it if so *)
+  val of_attribute : attribute -> t option
+
+  (** [hide] surrounds a list of signature items with the [(**/**)] comment, which toggles
+      odoc generation. *)
+  val hide : loc:Location.t -> signature_item list -> signature_item list
+
+  (** [simplify] removes consecutive pairs of [(**/**)] attributes in a signature *)
+  val simplify : signature_item list -> signature_item list
+end
 
 (** [demangle_template] separates an identifier on the first ["__"], which by our
     conventions corresponds to the mangling suffix added by [ppx_template]. Other ppxs use
-    this to recognize names mangled by [ppx_template] and treat them specially. *)
+    this to recognize names mangled by [ppx_template] and treat them specially.
+
+    If the identifier is a hash name (like [t__bits64#]), the hash is mangled with
+    [mangle_unboxed] first. For example, [demangle_unboxed "t__bits64#"] is
+    ["t_u", "__bits64"]. *)
 val demangle_template : string -> string * string
 
 (** [type_constr_conv_expr] is the standard way to map (long) identifiers to conversion
@@ -67,8 +86,14 @@ val type_constr_conv_pat
   -> f:(?functor_:string -> string -> string)
   -> pattern
 
+(** Given a typename, determine if it is implicit unboxed (e.g. [t#]) *)
+val is_implicit_unboxed : String.t -> bool
+
 (** Converts implicit unboxed type names (e.g. [t#]) into names that can be used as
-    identifiers (e.g. [t_u]). Leaves all other type names alone. *)
+    identifiers (e.g. [t_u]). Leaves all other type names alone.
+
+    If the identifier was mangled by ppx_template, the unboxed mangling happens on the
+    prefix of the identifier. For example, [mangle_unboxed "t__bits64#"] is "t_u__bits64". *)
 val mangle_unboxed : String.t -> String.t
 
 (** Reports whether a type has the [[@@ocaml.unboxed]] or [[@@unboxed]] attribute. *)
@@ -84,3 +109,20 @@ val with_implicit_unboxed_records
   :  unboxed:bool
   -> type_declaration list
   -> type_declaration list
+
+module Polytype : sig
+  type t =
+    { loc : Location.t
+    ; vars : (string loc * Ppxlib_jane.jkind_annotation option) list
+    ; body : core_type
+    }
+
+  val to_core_type : ?universally_quantify_only_if_jkind_annotation:bool -> t -> core_type
+end
+
+(** A wrapper over [Ppxlib.combinator_type_of_type_declaration] that makes it harder to
+    forget to universally-quantify the type variables. *)
+val combinator_type_of_type_declaration
+  :  type_declaration
+  -> f:(loc:Location.t -> core_type -> core_type)
+  -> Polytype.t
