@@ -198,13 +198,34 @@ module Polytype = struct
   ;;
 end
 
-let combinator_type_of_type_declaration td ~f =
+let consume_phantom_params phantom_attr td =
+  let non_phantom_params =
+    List.filter td.ptype_params ~f:(fun (param, _) ->
+      not (Option.is_some (Attribute.get phantom_attr param)))
+  in
+  let td =
+    { td with
+      ptype_params =
+        List.map td.ptype_params ~f:(fun (param, variance) ->
+          Attribute.remove_seen Core_type [ T phantom_attr ] param, variance)
+    }
+  in
+  td, non_phantom_params
+;;
+
+let combinator_type_of_type_declaration ?phantom_attr td ~f =
   (* We have to name the params first to avoid repeating the gensym for [ptyp_any]. *)
   let td = name_type_params_in_td td in
-  let result_type = f ~loc:td.ptype_name.loc (core_type_of_type_declaration td) in
+  let td, non_phantom_params =
+    match phantom_attr with
+    | Some attr -> consume_phantom_params attr td
+    | None -> td, td.ptype_params
+  in
+  let result_type = core_type_of_type_declaration td in
+  let result_type = f ~loc:td.ptype_name.loc result_type in
   let vars = List.map td.ptype_params ~f:Ppxlib_jane.get_type_param_name_and_jkind in
   let t =
-    List.fold_right td.ptype_params ~init:result_type ~f:(fun (tp, _variance) acc ->
+    List.fold_right non_phantom_params ~init:result_type ~f:(fun (tp, _variance) acc ->
       let loc = tp.ptyp_loc in
       ptyp_arrow ~loc Nolabel (f ~loc tp) acc)
   in

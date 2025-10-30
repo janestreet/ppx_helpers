@@ -121,8 +121,13 @@ module Polytype : sig
 end
 
 (** A wrapper over [Ppxlib.combinator_type_of_type_declaration] that makes it harder to
-    forget to universally-quantify the type variables. *)
+    forget to universally-quantify the type variables and supports type parameters being
+    marked as phantom.
+
+    If [phantom_attribute] is provided, then parameters with that attribute do not appear
+    in the combinator type. *)
 val combinator_type_of_type_declaration
-  :  type_declaration
+  :  ?phantom_attr:(core_type, unit) Attribute.t
+  -> type_declaration
   -> f:(loc:Location.t -> core_type -> core_type)
   -> Polytype.t
