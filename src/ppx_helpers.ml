@@ -66,8 +66,8 @@ let mangle_unboxed typename =
 (* These are private functions taken from [Ppxlib.Ast_builder] with minor adjustments to
    suit our purposes. *)
 open struct
-  (* Like [Ast_builder.unapplied_type_constr_conv_without_apply], but
-     returns the identifier directly rather than a [pexp_ident]. *)
+  (* Like [Ast_builder.unapplied_type_constr_conv_without_apply], but returns the
+     identifier directly rather than a [pexp_ident]. *)
   let unapplied_type_constr_conv_without_apply ~loc ~functor_ (ident : Longident.t) ~f =
     match ident with
     | Lident n -> { txt = Lident (f ~functor_ n); loc }
