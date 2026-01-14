@@ -1,5 +1,6 @@
 open! Stdppx
 open Ppxlib
+module Ox = Ox
 
 (** Common utility functions for PPXs that we may eventually upstream to ppxlib *)
 
@@ -30,7 +31,7 @@ end
     this to recognize names mangled by [ppx_template] and treat them specially.
 
     If the identifier is a hash name (like [t__bits64#]), the hash is mangled with
-    [mangle_unboxed] first. For example, [demangle_unboxed "t__bits64#"] is
+    [mangle_unboxed] first. For example, [demangle_template "t__bits64#"] is
     ["t_u", "__bits64"]. *)
 val demangle_template : string -> string * string
 
@@ -104,9 +105,12 @@ val has_unboxed_attribute : type_declaration -> bool
 val implicit_unboxed_record : type_declaration -> type_declaration option
 
 (** For derivers that take an [~unboxed] flag. If [unboxed], each [td] is followed by
-    [implicit_unboxed_record td]. If [not unboxed], returns the input unchanged. *)
+    [implicit_unboxed_record td]. If [not unboxed], returns the input unchanged.
+
+    Raises if [unboxed] but no type has an implicit unboxed version. *)
 val with_implicit_unboxed_records
-  :  unboxed:bool
+  :  loc:Location.t
+  -> unboxed:bool
   -> type_declaration list
   -> type_declaration list
 

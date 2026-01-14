@@ -1,6 +1,7 @@
 open! Stdppx
 open Ppxlib
 open Ast_builder.Default
+module Ox = Ox
 
 let ghoster =
   object
@@ -66,8 +67,8 @@ let mangle_unboxed typename =
 (* These are private functions taken from [Ppxlib.Ast_builder] with minor adjustments to
    suit our purposes. *)
 open struct
-  (* Like [Ast_builder.unapplied_type_constr_conv_without_apply], but
-     returns the identifier directly rather than a [pexp_ident]. *)
+  (* Like [Ast_builder.unapplied_type_constr_conv_without_apply], but returns the
+     identifier directly rather than a [pexp_ident]. *)
   let unapplied_type_constr_conv_without_apply ~loc ~functor_ (ident : Longident.t) ~f =
     match ident with
     | Lident n -> { txt = Lident (f ~functor_ n); loc }
@@ -166,14 +167,19 @@ let implicit_unboxed_record td =
   | _ -> None
 ;;
 
-let with_implicit_unboxed_records ~unboxed tds =
+let with_implicit_unboxed_records ~loc ~unboxed tds =
   match unboxed with
   | false -> tds
   | true ->
-    List.concat_map tds ~f:(fun td ->
-      match implicit_unboxed_record td with
-      | None -> [ td ]
-      | Some td_u -> [ td; td_u ])
+    let with_unboxed =
+      List.concat_map tds ~f:(fun td -> td :: Option.to_list (implicit_unboxed_record td))
+    in
+    if List.length tds = List.length with_unboxed
+    then
+      Location.raise_errorf
+        ~loc
+        "Unused [~unboxed] flag: none of these types have an implicit unboxed version"
+    else with_unboxed
 ;;
 
 module Polytype = struct
