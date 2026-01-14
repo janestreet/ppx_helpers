@@ -1,6 +1,7 @@
 open! Stdppx
 open Ppxlib
 open Ast_builder.Default
+module Ox = Ox
 
 let ghoster =
   object
@@ -166,14 +167,19 @@ let implicit_unboxed_record td =
   | _ -> None
 ;;
 
-let with_implicit_unboxed_records ~unboxed tds =
+let with_implicit_unboxed_records ~loc ~unboxed tds =
   match unboxed with
   | false -> tds
   | true ->
-    List.concat_map tds ~f:(fun td ->
-      match implicit_unboxed_record td with
-      | None -> [ td ]
-      | Some td_u -> [ td; td_u ])
+    let with_unboxed =
+      List.concat_map tds ~f:(fun td -> td :: Option.to_list (implicit_unboxed_record td))
+    in
+    if List.length tds = List.length with_unboxed
+    then
+      Location.raise_errorf
+        ~loc
+        "Unused [~unboxed] flag: none of these types have an implicit unboxed version"
+    else with_unboxed
 ;;
 
 module Polytype = struct
