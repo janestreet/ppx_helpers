@@ -100,15 +100,26 @@ val mangle_unboxed : String.t -> String.t
 (** Reports whether a type has the [[@@ocaml.unboxed]] or [[@@unboxed]] attribute. *)
 val has_unboxed_attribute : type_declaration -> bool
 
-(** Returns the implicit unboxed version of a type declaration. Produces [None] if a type
-    declaration doesn't have an implicit unboxed version. *)
+(** Returns the implicit unboxed version of a record type declaration. Produces [None] if
+    the type declaration is not a record or doesn't have an implicit unboxed version. *)
 val implicit_unboxed_record : type_declaration -> type_declaration option
 
+(** Returns the implicit unboxed version of a type alias. Produces [None] if the type
+    declaration is not an alias to a type constructor. For example, [type f = float]
+    produces [type f# = float#]. *)
+val implicit_unboxed_alias : type_declaration -> type_declaration option
+
+(** Returns the implicit unboxed version of a type declaration. This combines
+    [implicit_unboxed_record] and [implicit_unboxed_alias], returning the first that
+    succeeds. Produces [None] if the type declaration doesn't have an implicit unboxed
+    version. *)
+val implicit_unboxed : type_declaration -> type_declaration option
+
 (** For derivers that take an [~unboxed] flag. If [unboxed], each [td] is followed by
-    [implicit_unboxed_record td]. If [not unboxed], returns the input unchanged.
+    [implicit_unboxed td]. If [not unboxed], returns the input unchanged.
 
     Raises if [unboxed] but no type has an implicit unboxed version. *)
-val with_implicit_unboxed_records
+val with_implicit_unboxed_types
   :  loc:Location.t
   -> unboxed:bool
   -> type_declaration list
@@ -124,14 +135,28 @@ module Polytype : sig
   val to_core_type : ?universally_quantify_only_if_jkind_annotation:bool -> t -> core_type
 end
 
+(** Returns [true] if a type parameter should be treated as phantom, i.e. it has
+    [phantom_attr] or its name is in [phantom_names]. *)
+val is_phantom_param
+  :  phantom_attr:(core_type, unit) Attribute.t
+  -> phantom_names:String.Set.t
+  -> core_type * 'a
+  -> bool
+
 (** A wrapper over [Ppxlib.combinator_type_of_type_declaration] that makes it harder to
     forget to universally-quantify the type variables and supports type parameters being
     marked as phantom.
 
-    If [phantom_attribute] is provided, then parameters with that attribute do not appear
-    in the combinator type. *)
+    If [phantom_attr] is provided, then parameters with that attribute do not appear in
+    the combinator type.
+
+    If [phantom_td_attr] is provided, it specifies parameter names that should not appear
+    in the combinator type, e.g. [[@@phantom: 'a]] or [[@@phantom: 'a * 'b]]. *)
 val combinator_type_of_type_declaration
   :  ?phantom_attr:(core_type, unit) Attribute.t
+  -> ?phantom_td_attr:(type_declaration, string list) Attribute.t
   -> type_declaration
   -> f:(loc:Location.t -> core_type -> core_type)
   -> Polytype.t
+
+val globalize_longident : Longident.t -> Longident.t
