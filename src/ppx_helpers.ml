@@ -145,6 +145,8 @@ let has_unboxed_attribute td =
     | _ -> false)
 ;;
 
+let unbox_name s = s
+
 (* Converts a type constructor in a manifest to its unboxed version. For example, [t]
    becomes [t#], [M.t] becomes [M.t#], [M(X).t] becomes [M(X).t#]. *)
 let unbox_manifest_constr manifest =
@@ -152,8 +154,8 @@ let unbox_manifest_constr manifest =
   | Ptyp_constr (lid, args) ->
     let rec unbox_lid lid =
       match lid with
-      | Lident name -> Lident (name ^ "#")
-      | Ldot (path, name) -> Ldot (path, name ^ "#")
+      | Lident name -> Lident (unbox_name name)
+      | Ldot (path, name) -> Ldot (path, unbox_name name)
       | Lapply (lid1, lid2) -> Lapply (lid1, unbox_lid lid2)
     in
     Some { manifest with ptyp_desc = Ptyp_constr (Loc.map lid ~f:unbox_lid, args) }
@@ -186,7 +188,7 @@ let implicit_unboxed_record td =
           Ppxlib_jane.Shim.Type_kind.Ptype_record_unboxed_product
             (List.map lds ~f:make_immutable)
           |> Ppxlib_jane.Shim.Type_kind.to_parsetree
-      ; ptype_name = { td.ptype_name with txt = td.ptype_name.txt ^ "#" }
+      ; ptype_name = { td.ptype_name with txt = unbox_name td.ptype_name.txt }
       ; ptype_manifest
       })
   | _ -> None
@@ -198,7 +200,7 @@ let implicit_unboxed_alias td =
     Option.map (unbox_manifest_constr manifest) ~f:(fun unboxed_manifest ->
       { td with
         ptype_manifest = Some unboxed_manifest
-      ; ptype_name = { td.ptype_name with txt = td.ptype_name.txt ^ "#" }
+      ; ptype_name = { td.ptype_name with txt = unbox_name td.ptype_name.txt }
       })
   | _ -> None
 ;;
