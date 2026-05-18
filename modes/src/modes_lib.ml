@@ -31,7 +31,7 @@ let implications =
       , Portability
       , function
         | Stateless -> Some Portable
-        | Observing -> Some Shareable
+        | Reading -> Some Shareable
         | Stateful -> Some Nonportable )
   ; I
       ( all_universes
@@ -283,13 +283,13 @@ module Contention = Make_axis (struct
 module Statefulness = Make_axis (struct
     type t = statefulness
 
-    let all = [ Stateless; Observing; Stateful ]
+    let all = [ Stateless; Reading; Stateful ]
     let monadicity = Comonadic
     let legacy = Stateful
 
     let of_modal : Modal.t -> t option = function
       | Stateless -> Some Stateless
-      | Observing -> Some Observing
+      | Reading -> Some Reading
       | Stateful -> Some Stateful
       | _ -> None
     ;;
@@ -408,9 +408,11 @@ module Nullability = Make_nonmodal_axis (struct
 module Separability = Make_nonmodal_axis (struct
     type t = separability
 
-    let all = [ Non_float; Separable; Maybe_separable ]
+    let all = [ Non_pointer; Non_pointer64; Non_float; Separable; Maybe_separable ]
 
     let of_nonmodal : Nonmodal.t -> t option = function
+      | Non_pointer -> Some Non_pointer
+      | Non_pointer64 -> Some Non_pointer64
       | Non_float -> Some Non_float
       | Separable -> Some Separable
       | Maybe_separable -> Some Maybe_separable
@@ -1133,7 +1135,7 @@ module Kind = struct
     ; ( "immediate64"
       , ( Value
         , modals (Crossings.to_modals immediate_crossings)
-          @ nonmodals [ Non_null; Non_float; External64 ] ) )
+          @ nonmodals [ Non_null; Non_pointer64; External64 ] ) )
     ; "float64", (Float64, nonmodals [ Non_null; Non_float ])
     ; "float32", (Float32, nonmodals [ Non_null; Non_float ])
     ; "word", (Word, nonmodals [ Non_null; Non_float ])

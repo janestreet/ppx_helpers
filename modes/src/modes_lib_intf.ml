@@ -79,7 +79,7 @@ module Definitions = struct
 
   type statefulness =
     | Stateless
-    | Observing
+    | Reading
     | Stateful
   [@@deriving_inline sexp_of]
 
@@ -88,7 +88,7 @@ module Definitions = struct
   let sexp_of_statefulness =
     (function
      | Stateless -> Sexplib0.Sexp.Atom "Stateless"
-     | Observing -> Sexplib0.Sexp.Atom "Observing"
+     | Reading -> Sexplib0.Sexp.Atom "Reading"
      | Stateful -> Sexplib0.Sexp.Atom "Stateful"
      : statefulness -> Sexplib0.Sexp.t)
   ;;
@@ -248,6 +248,8 @@ module Definitions = struct
   [@@@end]
 
   type separability =
+    | Non_pointer
+    | Non_pointer64
     | Non_float
     | Separable
     | Maybe_separable
@@ -257,6 +259,8 @@ module Definitions = struct
 
   let sexp_of_separability =
     (function
+     | Non_pointer -> Sexplib0.Sexp.Atom "Non_pointer"
+     | Non_pointer64 -> Sexplib0.Sexp.Atom "Non_pointer64"
      | Non_float -> Sexplib0.Sexp.Atom "Non_float"
      | Separable -> Sexplib0.Sexp.Atom "Separable"
      | Maybe_separable -> Sexplib0.Sexp.Atom "Maybe_separable"
@@ -323,7 +327,7 @@ module Definitions = struct
       | Shared
       | Contended
       | Stateless
-      | Observing
+      | Reading
       | Stateful
       | Read_write
       | Read
@@ -352,7 +356,7 @@ module Definitions = struct
        ; Shared
        ; Contended
        ; Stateless
-       ; Observing
+       ; Reading
        ; Stateful
        ; Read_write
        ; Read
@@ -385,7 +389,7 @@ module Definitions = struct
        | Sexplib0.Sexp.Atom ("shared" | "Shared") -> Shared
        | Sexplib0.Sexp.Atom ("contended" | "Contended") -> Contended
        | Sexplib0.Sexp.Atom ("stateless" | "Stateless") -> Stateless
-       | Sexplib0.Sexp.Atom ("observing" | "Observing") -> Observing
+       | Sexplib0.Sexp.Atom ("reading" | "Reading") -> Reading
        | Sexplib0.Sexp.Atom ("stateful" | "Stateful") -> Stateful
        | Sexplib0.Sexp.Atom ("read_write" | "Read_write") -> Read_write
        | Sexplib0.Sexp.Atom ("read" | "Read") -> Read
@@ -420,8 +424,8 @@ module Definitions = struct
               | "Contended"
               | "stateless"
               | "Stateless"
-              | "observing"
-              | "Observing"
+              | "reading"
+              | "Reading"
               | "stateful"
               | "Stateful"
               | "read_write"
@@ -468,7 +472,7 @@ module Definitions = struct
            ; "Shared"
            ; "Contended"
            ; "Stateless"
-           ; "Observing"
+           ; "Reading"
            ; "Stateful"
            ; "Read_write"
            ; "Read"
@@ -501,7 +505,7 @@ module Definitions = struct
        | Shared -> Sexplib0.Sexp.Atom "Shared"
        | Contended -> Sexplib0.Sexp.Atom "Contended"
        | Stateless -> Sexplib0.Sexp.Atom "Stateless"
-       | Observing -> Sexplib0.Sexp.Atom "Observing"
+       | Reading -> Sexplib0.Sexp.Atom "Reading"
        | Stateful -> Sexplib0.Sexp.Atom "Stateful"
        | Read_write -> Sexplib0.Sexp.Atom "Read_write"
        | Read -> Sexplib0.Sexp.Atom "Read"
@@ -539,6 +543,8 @@ module Definitions = struct
       | Internal
       | Non_null
       | Maybe_null
+      | Non_pointer
+      | Non_pointer64
       | Non_float
       | Separable
       | Maybe_separable
@@ -552,6 +558,8 @@ module Definitions = struct
        ; Internal
        ; Non_null
        ; Maybe_null
+       ; Non_pointer
+       ; Non_pointer64
        ; Non_float
        ; Separable
        ; Maybe_separable
@@ -569,6 +577,8 @@ module Definitions = struct
        | Sexplib0.Sexp.Atom ("internal" | "Internal") -> Internal
        | Sexplib0.Sexp.Atom ("non_null" | "Non_null") -> Non_null
        | Sexplib0.Sexp.Atom ("maybe_null" | "Maybe_null") -> Maybe_null
+       | Sexplib0.Sexp.Atom ("non_pointer" | "Non_pointer") -> Non_pointer
+       | Sexplib0.Sexp.Atom ("non_pointer64" | "Non_pointer64") -> Non_pointer64
        | Sexplib0.Sexp.Atom ("non_float" | "Non_float") -> Non_float
        | Sexplib0.Sexp.Atom ("separable" | "Separable") -> Separable
        | Sexplib0.Sexp.Atom ("maybe_separable" | "Maybe_separable") -> Maybe_separable
@@ -584,6 +594,10 @@ module Definitions = struct
               | "Non_null"
               | "maybe_null"
               | "Maybe_null"
+              | "non_pointer"
+              | "Non_pointer"
+              | "non_pointer64"
+              | "Non_pointer64"
               | "non_float"
               | "Non_float"
               | "separable"
@@ -604,6 +618,8 @@ module Definitions = struct
            ; "Internal"
            ; "Non_null"
            ; "Maybe_null"
+           ; "Non_pointer"
+           ; "Non_pointer64"
            ; "Non_float"
            ; "Separable"
            ; "Maybe_separable"
@@ -621,6 +637,8 @@ module Definitions = struct
        | Internal -> Sexplib0.Sexp.Atom "Internal"
        | Non_null -> Sexplib0.Sexp.Atom "Non_null"
        | Maybe_null -> Sexplib0.Sexp.Atom "Maybe_null"
+       | Non_pointer -> Sexplib0.Sexp.Atom "Non_pointer"
+       | Non_pointer64 -> Sexplib0.Sexp.Atom "Non_pointer64"
        | Non_float -> Sexplib0.Sexp.Atom "Non_float"
        | Separable -> Sexplib0.Sexp.Atom "Separable"
        | Maybe_separable -> Sexplib0.Sexp.Atom "Maybe_separable"
