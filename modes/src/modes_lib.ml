@@ -1132,10 +1132,19 @@ module Kind = struct
       , ( Value
         , modals (Crossings.to_modals immediate_crossings)
           @ nonmodals (Nonmodals.to_nonmodals Nonmodals.bottom) ) )
+    ; ( "immediate_or_null"
+      , ( Value
+        , modals (Crossings.to_modals immediate_crossings)
+          @ nonmodals [ Non_pointer; External_ ] ) )
     ; ( "immediate64"
       , ( Value
         , modals (Crossings.to_modals immediate_crossings)
           @ nonmodals [ Non_null; Non_pointer64; External64 ] ) )
+    ; ( "immediate64_or_null"
+      , ( Value
+        , modals (Crossings.to_modals immediate_crossings)
+          @ nonmodals [ Non_pointer64; External64 ] ) )
+    ; "untagged_immediate", (Untagged_immediate, nonmodals [ Non_null; Non_float ])
     ; "float64", (Float64, nonmodals [ Non_null; Non_float ])
     ; "float32", (Float32, nonmodals [ Non_null; Non_float ])
     ; "word", (Word, nonmodals [ Non_null; Non_float ])

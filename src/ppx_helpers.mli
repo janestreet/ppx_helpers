@@ -7,6 +7,10 @@ module Ox = Ox
 (** Ast-mapper that ghosts all locations *)
 val ghoster : Ast_traverse.map
 
+(** Generate a fresh identifier as with [gen_symbol] and return a [ppat_var] and
+    [pexp_ident] pair with that identifier *)
+val gen_var_pat_and_exp : loc:location -> ?prefix:string -> unit -> pattern * expression
+
 (** Utilities for manipulating doc comments *)
 
 module Docs : sig
