@@ -10,6 +10,13 @@ let ghoster =
   end
 ;;
 
+let unboxed_supported = false
+
+let gen_var_pat_and_exp ~loc ?prefix () =
+  let txt = gen_symbol ?prefix () in
+  ppat_var ~loc { txt; loc }, pexp_ident ~loc { txt = Lident txt; loc }
+;;
+
 module Docs = struct
   type t =
     | Toggle
@@ -145,7 +152,7 @@ let has_unboxed_attribute td =
     | _ -> false)
 ;;
 
-let unbox_name s = s
+let unbox_name s = if unboxed_supported then s ^ "#" else s
 
 (* Converts a type constructor in a manifest to its unboxed version. For example, [t]
    becomes [t#], [M.t] becomes [M.t#], [M(X).t] becomes [M(X).t#]. *)
@@ -172,7 +179,7 @@ let implicit_unboxed_record td =
     }
   in
   match td.ptype_kind with
-  | Ptype_record lds when not (has_unboxed_attribute td) ->
+  | Ptype_record lds when (not (has_unboxed_attribute td)) && unboxed_supported ->
     (* Also update the manifest if present (e.g., [type u = t = { ... }]) *)
     let unboxed_manifest =
       match td.ptype_manifest with
@@ -196,7 +203,7 @@ let implicit_unboxed_record td =
 
 let implicit_unboxed_alias td =
   match td.ptype_kind, td.ptype_manifest with
-  | Ptype_abstract, Some manifest ->
+  | Ptype_abstract, Some manifest when unboxed_supported ->
     Option.map (unbox_manifest_constr manifest) ~f:(fun unboxed_manifest ->
       { td with
         ptype_manifest = Some unboxed_manifest
@@ -212,7 +219,7 @@ let implicit_unboxed td =
 ;;
 
 let with_implicit_unboxed_types ~loc ~unboxed tds =
-  match unboxed with
+  match unboxed && unboxed_supported with
   | false -> tds
   | true ->
     let with_unboxed =
