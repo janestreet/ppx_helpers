@@ -207,7 +207,7 @@ module Definitions = struct
 
   [@@@end]
 
-  (** Nonmodal jkind axes (soon to be nontrivialities) *)
+  (** Nonmodal jkind axes *)
 
   type externality =
     | External_
@@ -232,9 +232,34 @@ module Definitions = struct
   type nullability =
     | Non_null
     | Maybe_null
-  [@@deriving_inline sexp_of]
+  [@@deriving_inline enumerate, sexp]
 
   let _ = fun (_ : nullability) -> ()
+  let all_of_nullability = ([ Non_null; Maybe_null ] : nullability list)
+  let _ = all_of_nullability
+
+  let nullability_of_sexp =
+    (let error_source__003_ = "modes_lib_intf.ml.Definitions.nullability" in
+     function
+     | Sexplib0.Sexp.Atom ("non_null" | "Non_null") -> Non_null
+     | Sexplib0.Sexp.Atom ("maybe_null" | "Maybe_null") -> Maybe_null
+     | Sexplib0.Sexp.List
+         (Sexplib0.Sexp.Atom ("non_null" | "Non_null" | "maybe_null" | "Maybe_null") :: _)
+       as sexp__004_ ->
+       Sexplib0.Sexp_conv_error.stag_no_args error_source__003_ sexp__004_
+     | Sexplib0.Sexp.List (Sexplib0.Sexp.List _ :: _) as sexp__002_ ->
+       Sexplib0.Sexp_conv_error.nested_list_invalid_sum error_source__003_ sexp__002_
+     | Sexplib0.Sexp.List [] as sexp__002_ ->
+       Sexplib0.Sexp_conv_error.empty_list_invalid_sum error_source__003_ sexp__002_
+     | sexp__002_ ->
+       Sexplib0.Sexp_conv_error.unexpected_stag
+         error_source__003_
+         [ "Non_null"; "Maybe_null" ]
+         sexp__002_
+     : Sexplib0.Sexp.t -> nullability)
+  ;;
+
+  let _ = nullability_of_sexp
 
   let sexp_of_nullability =
     (function
@@ -253,9 +278,52 @@ module Definitions = struct
     | Non_float
     | Separable
     | Maybe_separable
-  [@@deriving_inline sexp_of]
+  [@@deriving_inline enumerate, sexp]
 
   let _ = fun (_ : separability) -> ()
+
+  let all_of_separability =
+    ([ Non_pointer; Non_pointer64; Non_float; Separable; Maybe_separable ]
+     : separability list)
+  ;;
+
+  let _ = all_of_separability
+
+  let separability_of_sexp =
+    (let error_source__007_ = "modes_lib_intf.ml.Definitions.separability" in
+     function
+     | Sexplib0.Sexp.Atom ("non_pointer" | "Non_pointer") -> Non_pointer
+     | Sexplib0.Sexp.Atom ("non_pointer64" | "Non_pointer64") -> Non_pointer64
+     | Sexplib0.Sexp.Atom ("non_float" | "Non_float") -> Non_float
+     | Sexplib0.Sexp.Atom ("separable" | "Separable") -> Separable
+     | Sexplib0.Sexp.Atom ("maybe_separable" | "Maybe_separable") -> Maybe_separable
+     | Sexplib0.Sexp.List
+         (Sexplib0.Sexp.Atom
+            ( "non_pointer"
+            | "Non_pointer"
+            | "non_pointer64"
+            | "Non_pointer64"
+            | "non_float"
+            | "Non_float"
+            | "separable"
+            | "Separable"
+            | "maybe_separable"
+            | "Maybe_separable" )
+         :: _) as sexp__008_ ->
+       Sexplib0.Sexp_conv_error.stag_no_args error_source__007_ sexp__008_
+     | Sexplib0.Sexp.List (Sexplib0.Sexp.List _ :: _) as sexp__006_ ->
+       Sexplib0.Sexp_conv_error.nested_list_invalid_sum error_source__007_ sexp__006_
+     | Sexplib0.Sexp.List [] as sexp__006_ ->
+       Sexplib0.Sexp_conv_error.empty_list_invalid_sum error_source__007_ sexp__006_
+     | sexp__006_ ->
+       Sexplib0.Sexp_conv_error.unexpected_stag
+         error_source__007_
+         [ "Non_pointer"; "Non_pointer64"; "Non_float"; "Separable"; "Maybe_separable" ]
+         sexp__006_
+     : Sexplib0.Sexp.t -> separability)
+  ;;
+
+  let _ = separability_of_sexp
 
   let sexp_of_separability =
     (function
@@ -270,6 +338,130 @@ module Definitions = struct
   let _ = sexp_of_separability
 
   [@@@end]
+
+  module Scannable_axes = struct
+    type t =
+      { nullability : nullability
+      ; separability : separability
+      }
+    [@@deriving_inline enumerate, sexp]
+
+    let _ = fun (_ : t) -> ()
+
+    let all =
+      (let enumerate__009_ = all_of_nullability in
+       let enumerate__010_ = all_of_separability in
+       let rec loop acc enumerate__013_ enumerate__014_ =
+         match enumerate__013_, enumerate__014_ with
+         | _, [] -> Ppx_enumerate_lib.List.rev acc
+         | enumerate__011_ :: enumerate__015_, enumerate__012_ :: _ ->
+           loop
+             ({ nullability = enumerate__011_; separability = enumerate__012_ } :: acc)
+             enumerate__015_
+             enumerate__014_
+         | [], _ :: enumerate__015_ -> loop acc enumerate__009_ enumerate__015_
+       in
+       loop [] enumerate__009_ enumerate__010_
+       : t list)
+    ;;
+
+    let _ = all
+
+    let t_of_sexp =
+      (let error_source__017_ = "modes_lib_intf.ml.Definitions.Scannable_axes.t" in
+       fun x__022_ ->
+         Sexplib0.Sexp_conv_record.record_of_sexp
+           ~caller:error_source__017_
+           ~fields:
+             (Field
+                { name = "nullability"
+                ; kind = Required
+                ; conv =
+                    (fun x__020_ ->
+                      let _x__021_ = (nullability_of_sexp [@inlined never]) x__020_ in
+                      fun () -> _x__021_)
+                ; rest =
+                    Field
+                      { name = "separability"
+                      ; kind = Required
+                      ; conv =
+                          (fun x__018_ ->
+                            let _x__019_ =
+                              (separability_of_sexp [@inlined never]) x__018_
+                            in
+                            fun () -> _x__019_)
+                      ; rest = Empty
+                      }
+                })
+           ~index_of_field:(function
+             | "nullability" -> 0
+             | "separability" -> 1
+             | _ -> -1)
+           ~allow_extra_fields:false
+           ~create:(fun (nullability, (separability, ())) : t ->
+             let nullability = nullability () in
+             let separability = separability () in
+             { nullability; separability })
+           x__022_
+       : Sexplib0.Sexp.t -> t)
+    ;;
+
+    let _ = t_of_sexp
+
+    let sexp_of_t =
+      (fun { nullability = nullability__024_; separability = separability__026_ } ->
+         let bnds__023_ = ([] : _ Stdlib.List.t) in
+         let bnds__023_ =
+           let arg__027_ = sexp_of_separability separability__026_ in
+           (Sexplib0.Sexp.List [ Sexplib0.Sexp.Atom "separability"; arg__027_ ]
+            :: bnds__023_
+            : _ Stdlib.List.t)
+         in
+         let bnds__023_ =
+           let arg__025_ = sexp_of_nullability nullability__024_ in
+           (Sexplib0.Sexp.List [ Sexplib0.Sexp.Atom "nullability"; arg__025_ ]
+            :: bnds__023_
+            : _ Stdlib.List.t)
+         in
+         Sexplib0.Sexp.List bnds__023_
+       : t -> Sexplib0.Sexp.t)
+    ;;
+
+    let _ = sexp_of_t
+
+    [@@@end]
+  end
+
+  module Scannable_axis = struct
+    type t =
+      | Nullability of nullability
+      | Separability of separability
+    [@@deriving_inline enumerate]
+
+    let _ = fun (_ : t) -> ()
+
+    let all =
+      (Ppx_enumerate_lib.List.append
+         (let rec map l acc =
+            match l with
+            | [] -> Ppx_enumerate_lib.List.rev acc
+            | enumerate__028_ :: l -> map l (Nullability enumerate__028_ :: acc)
+          in
+          map all_of_nullability [])
+         (let rec map l acc =
+            match l with
+            | [] -> Ppx_enumerate_lib.List.rev acc
+            | enumerate__029_ :: l -> map l (Separability enumerate__029_ :: acc)
+          in
+          map all_of_separability [])
+       : t list)
+    ;;
+
+    let _ = all
+
+    [@@@end]
+  end
+
   [@@@ocamlformat "disable"]
 
   type !'a axis =
@@ -288,33 +480,35 @@ module Definitions = struct
   let _ = fun (_ : 'a axis) -> ()
 
   let sexp_of_axis : 'a . 'a axis -> Sexplib0.Sexp.t =
-    fun (type a__002_) ->
+  fun (type a__031_) ->
     (function
-      | Locality -> Sexplib0.Sexp.Atom "Locality"
-      | Portability -> Sexplib0.Sexp.Atom "Portability"
-      | Contention -> Sexplib0.Sexp.Atom "Contention"
-      | Statefulness -> Sexplib0.Sexp.Atom "Statefulness"
-      | Visibility -> Sexplib0.Sexp.Atom "Visibility"
-      | Linearity -> Sexplib0.Sexp.Atom "Linearity"
-      | Uniqueness -> Sexplib0.Sexp.Atom "Uniqueness"
-      | Yielding -> Sexplib0.Sexp.Atom "Yielding"
-      | Forkable -> Sexplib0.Sexp.Atom "Forkable"
-      | Staticity -> Sexplib0.Sexp.Atom "Staticity"
-                      : a__002_ axis -> Sexplib0.Sexp.t)
+     | Locality -> Sexplib0.Sexp.Atom "Locality"
+     | Portability -> Sexplib0.Sexp.Atom "Portability"
+     | Contention -> Sexplib0.Sexp.Atom "Contention"
+     | Statefulness -> Sexplib0.Sexp.Atom "Statefulness"
+     | Visibility -> Sexplib0.Sexp.Atom "Visibility"
+     | Linearity -> Sexplib0.Sexp.Atom "Linearity"
+     | Uniqueness -> Sexplib0.Sexp.Atom "Uniqueness"
+     | Yielding -> Sexplib0.Sexp.Atom "Yielding"
+     | Forkable -> Sexplib0.Sexp.Atom "Forkable"
+     | Staticity -> Sexplib0.Sexp.Atom "Staticity" : a__031_ axis ->
+                                                       Sexplib0.Sexp.t)
 
   let _ = sexp_of_axis
 
   [@@@end]
   [@@@ocamlformat "enable"]
 
-  type !'a nonmodal_axis =
-    | Externality : externality nonmodal_axis
-    | Nullability : nullability nonmodal_axis
-    | Separability : separability nonmodal_axis
+  type !'a nonmodal_axis = Externality : externality nonmodal_axis
+
+  type !'a scannable_axis =
+    | Nullability : nullability scannable_axis
+    | Separability : separability scannable_axis
 
   type !'a jkind_axis =
     | Modal of 'a axis
     | Nonmodal of 'a nonmodal_axis
+    | Scannable of 'a scannable_axis
 
   module Modal = struct
     type t =
@@ -378,7 +572,7 @@ module Definitions = struct
     let _ = all
 
     let t_of_sexp =
-      (let error_source__005_ = "modes_lib_intf.ml.Definitions.Modal.t" in
+      (let error_source__034_ = "modes_lib_intf.ml.Definitions.Modal.t" in
        function
        | Sexplib0.Sexp.Atom ("global" | "Global") -> Global
        | Sexplib0.Sexp.Atom ("local" | "Local") -> Local
@@ -454,15 +648,15 @@ module Definitions = struct
               | "Static"
               | "dynamic"
               | "Dynamic" )
-           :: _) as sexp__006_ ->
-         Sexplib0.Sexp_conv_error.stag_no_args error_source__005_ sexp__006_
-       | Sexplib0.Sexp.List (Sexplib0.Sexp.List _ :: _) as sexp__004_ ->
-         Sexplib0.Sexp_conv_error.nested_list_invalid_sum error_source__005_ sexp__004_
-       | Sexplib0.Sexp.List [] as sexp__004_ ->
-         Sexplib0.Sexp_conv_error.empty_list_invalid_sum error_source__005_ sexp__004_
-       | sexp__004_ ->
+           :: _) as sexp__035_ ->
+         Sexplib0.Sexp_conv_error.stag_no_args error_source__034_ sexp__035_
+       | Sexplib0.Sexp.List (Sexplib0.Sexp.List _ :: _) as sexp__033_ ->
+         Sexplib0.Sexp_conv_error.nested_list_invalid_sum error_source__034_ sexp__033_
+       | Sexplib0.Sexp.List [] as sexp__033_ ->
+         Sexplib0.Sexp_conv_error.empty_list_invalid_sum error_source__034_ sexp__033_
+       | sexp__033_ ->
          Sexplib0.Sexp_conv_error.unexpected_stag
-           error_source__005_
+           error_source__034_
            [ "Global"
            ; "Local"
            ; "Portable"
@@ -488,7 +682,7 @@ module Definitions = struct
            ; "Static"
            ; "Dynamic"
            ]
-           sexp__004_
+           sexp__033_
        : Sexplib0.Sexp.t -> t)
     ;;
 
@@ -541,47 +735,18 @@ module Definitions = struct
       | External_
       | External64
       | Internal
-      | Non_null
-      | Maybe_null
-      | Non_pointer
-      | Non_pointer64
-      | Non_float
-      | Separable
-      | Maybe_separable
     [@@deriving_inline enumerate, sexp]
 
     let _ = fun (_ : t) -> ()
-
-    let all =
-      ([ External_
-       ; External64
-       ; Internal
-       ; Non_null
-       ; Maybe_null
-       ; Non_pointer
-       ; Non_pointer64
-       ; Non_float
-       ; Separable
-       ; Maybe_separable
-       ]
-       : t list)
-    ;;
-
+    let all = ([ External_; External64; Internal ] : t list)
     let _ = all
 
     let t_of_sexp =
-      (let error_source__009_ = "modes_lib_intf.ml.Definitions.Nonmodal.t" in
+      (let error_source__038_ = "modes_lib_intf.ml.Definitions.Nonmodal.t" in
        function
        | Sexplib0.Sexp.Atom ("external_" | "External_") -> External_
        | Sexplib0.Sexp.Atom ("external64" | "External64") -> External64
        | Sexplib0.Sexp.Atom ("internal" | "Internal") -> Internal
-       | Sexplib0.Sexp.Atom ("non_null" | "Non_null") -> Non_null
-       | Sexplib0.Sexp.Atom ("maybe_null" | "Maybe_null") -> Maybe_null
-       | Sexplib0.Sexp.Atom ("non_pointer" | "Non_pointer") -> Non_pointer
-       | Sexplib0.Sexp.Atom ("non_pointer64" | "Non_pointer64") -> Non_pointer64
-       | Sexplib0.Sexp.Atom ("non_float" | "Non_float") -> Non_float
-       | Sexplib0.Sexp.Atom ("separable" | "Separable") -> Separable
-       | Sexplib0.Sexp.Atom ("maybe_separable" | "Maybe_separable") -> Maybe_separable
        | Sexplib0.Sexp.List
            (Sexplib0.Sexp.Atom
               ( "external_"
@@ -589,42 +754,18 @@ module Definitions = struct
               | "external64"
               | "External64"
               | "internal"
-              | "Internal"
-              | "non_null"
-              | "Non_null"
-              | "maybe_null"
-              | "Maybe_null"
-              | "non_pointer"
-              | "Non_pointer"
-              | "non_pointer64"
-              | "Non_pointer64"
-              | "non_float"
-              | "Non_float"
-              | "separable"
-              | "Separable"
-              | "maybe_separable"
-              | "Maybe_separable" )
-           :: _) as sexp__010_ ->
-         Sexplib0.Sexp_conv_error.stag_no_args error_source__009_ sexp__010_
-       | Sexplib0.Sexp.List (Sexplib0.Sexp.List _ :: _) as sexp__008_ ->
-         Sexplib0.Sexp_conv_error.nested_list_invalid_sum error_source__009_ sexp__008_
-       | Sexplib0.Sexp.List [] as sexp__008_ ->
-         Sexplib0.Sexp_conv_error.empty_list_invalid_sum error_source__009_ sexp__008_
-       | sexp__008_ ->
+              | "Internal" )
+           :: _) as sexp__039_ ->
+         Sexplib0.Sexp_conv_error.stag_no_args error_source__038_ sexp__039_
+       | Sexplib0.Sexp.List (Sexplib0.Sexp.List _ :: _) as sexp__037_ ->
+         Sexplib0.Sexp_conv_error.nested_list_invalid_sum error_source__038_ sexp__037_
+       | Sexplib0.Sexp.List [] as sexp__037_ ->
+         Sexplib0.Sexp_conv_error.empty_list_invalid_sum error_source__038_ sexp__037_
+       | sexp__037_ ->
          Sexplib0.Sexp_conv_error.unexpected_stag
-           error_source__009_
-           [ "External_"
-           ; "External64"
-           ; "Internal"
-           ; "Non_null"
-           ; "Maybe_null"
-           ; "Non_pointer"
-           ; "Non_pointer64"
-           ; "Non_float"
-           ; "Separable"
-           ; "Maybe_separable"
-           ]
-           sexp__008_
+           error_source__038_
+           [ "External_"; "External64"; "Internal" ]
+           sexp__037_
        : Sexplib0.Sexp.t -> t)
     ;;
 
@@ -635,13 +776,6 @@ module Definitions = struct
        | External_ -> Sexplib0.Sexp.Atom "External_"
        | External64 -> Sexplib0.Sexp.Atom "External64"
        | Internal -> Sexplib0.Sexp.Atom "Internal"
-       | Non_null -> Sexplib0.Sexp.Atom "Non_null"
-       | Maybe_null -> Sexplib0.Sexp.Atom "Maybe_null"
-       | Non_pointer -> Sexplib0.Sexp.Atom "Non_pointer"
-       | Non_pointer64 -> Sexplib0.Sexp.Atom "Non_pointer64"
-       | Non_float -> Sexplib0.Sexp.Atom "Non_float"
-       | Separable -> Sexplib0.Sexp.Atom "Separable"
-       | Maybe_separable -> Sexplib0.Sexp.Atom "Maybe_separable"
        : t -> Sexplib0.Sexp.t)
     ;;
 
@@ -654,6 +788,38 @@ module Definitions = struct
     type t =
       | Modal of Modal.t
       | Nonmodal of Nonmodal.t
+      | Scannable_axis of Scannable_axis.t
+    [@@deriving_inline enumerate]
+
+    let _ = fun (_ : t) -> ()
+
+    let all =
+      (Ppx_enumerate_lib.List.append
+         (let rec map l acc =
+            match l with
+            | [] -> Ppx_enumerate_lib.List.rev acc
+            | enumerate__040_ :: l -> map l (Modal enumerate__040_ :: acc)
+          in
+          map Modal.all [])
+         (Ppx_enumerate_lib.List.append
+            (let rec map l acc =
+               match l with
+               | [] -> Ppx_enumerate_lib.List.rev acc
+               | enumerate__041_ :: l -> map l (Nonmodal enumerate__041_ :: acc)
+             in
+             map Nonmodal.all [])
+            (let rec map l acc =
+               match l with
+               | [] -> Ppx_enumerate_lib.List.rev acc
+               | enumerate__042_ :: l -> map l (Scannable_axis enumerate__042_ :: acc)
+             in
+             map Scannable_axis.all []))
+       : t list)
+    ;;
+
+    let _ = all
+
+    [@@@end]
   end
 
   module type Lattice = sig
@@ -728,49 +894,35 @@ module Definitions = struct
     val set : t -> 'a axis -> 'a wrapped -> t
   end
 
-  module type Nonmodal_axis = sig
+  (** A lattice that is a total order, given by the low-to-high enumeration [all]. *)
+  module type Total_lattice = sig
     include Lattice
 
     val all : t list
+  end
+
+  module type Nonmodal_axis = sig
+    include Total_lattice
+
     val of_nonmodal : Nonmodal.t -> t option
     val to_nonmodal : t -> Nonmodal.t
   end
 
   module Nonmodals = struct
-    type t =
-      { externality : externality
-      ; nullability : nullability
-      ; separability : separability
-      }
-    [@@deriving_inline sexp_of]
+    type t = { externality : externality } [@@deriving_inline sexp_of]
 
     let _ = fun (_ : t) -> ()
 
     let sexp_of_t =
-      (fun { externality = externality__012_
-           ; nullability = nullability__014_
-           ; separability = separability__016_
-           } ->
-         let bnds__011_ = ([] : _ Stdlib.List.t) in
-         let bnds__011_ =
-           let arg__017_ = sexp_of_separability separability__016_ in
-           (Sexplib0.Sexp.List [ Sexplib0.Sexp.Atom "separability"; arg__017_ ]
-            :: bnds__011_
+      (fun { externality = externality__044_ } ->
+         let bnds__043_ = ([] : _ Stdlib.List.t) in
+         let bnds__043_ =
+           let arg__045_ = sexp_of_externality externality__044_ in
+           (Sexplib0.Sexp.List [ Sexplib0.Sexp.Atom "externality"; arg__045_ ]
+            :: bnds__043_
             : _ Stdlib.List.t)
          in
-         let bnds__011_ =
-           let arg__015_ = sexp_of_nullability nullability__014_ in
-           (Sexplib0.Sexp.List [ Sexplib0.Sexp.Atom "nullability"; arg__015_ ]
-            :: bnds__011_
-            : _ Stdlib.List.t)
-         in
-         let bnds__011_ =
-           let arg__013_ = sexp_of_externality externality__012_ in
-           (Sexplib0.Sexp.List [ Sexplib0.Sexp.Atom "externality"; arg__013_ ]
-            :: bnds__011_
-            : _ Stdlib.List.t)
-         in
-         Sexplib0.Sexp.List bnds__011_
+         Sexplib0.Sexp.List bnds__043_
        : t -> Sexplib0.Sexp.t)
     ;;
 
@@ -779,10 +931,10 @@ module Definitions = struct
     [@@@end]
   end
 
-  module Base_sort = struct
+  module Layout = struct
     type t =
       | Void
-      | Value
+      | Scannable of Scannable_axes.t
       | Untagged_immediate
       | Float64
       | Float32
@@ -794,15 +946,59 @@ module Definitions = struct
       | Vec128
       | Vec256
       | Vec512
-    [@@deriving_inline sexp]
+      | Any of Scannable_axes.t
+    [@@deriving_inline enumerate, sexp]
 
     let _ = fun (_ : t) -> ()
 
+    let all =
+      (Void
+       :: Ppx_enumerate_lib.List.append
+            (let rec map l acc =
+               match l with
+               | [] -> Ppx_enumerate_lib.List.rev acc
+               | enumerate__046_ :: l -> map l (Scannable enumerate__046_ :: acc)
+             in
+             map Scannable_axes.all [])
+            (Untagged_immediate
+             :: Float64
+             :: Float32
+             :: Word
+             :: Bits8
+             :: Bits16
+             :: Bits32
+             :: Bits64
+             :: Vec128
+             :: Vec256
+             :: Vec512
+             ::
+             (let rec map l acc =
+                match l with
+                | [] -> Ppx_enumerate_lib.List.rev acc
+                | enumerate__047_ :: l -> map l (Any enumerate__047_ :: acc)
+              in
+              map Scannable_axes.all []))
+       : t list)
+    ;;
+
+    let _ = all
+
     let t_of_sexp =
-      (let error_source__020_ = "modes_lib_intf.ml.Definitions.Base_sort.t" in
+      (let error_source__050_ = "modes_lib_intf.ml.Definitions.Layout.t" in
        function
        | Sexplib0.Sexp.Atom ("void" | "Void") -> Void
-       | Sexplib0.Sexp.Atom ("value" | "Value") -> Value
+       | Sexplib0.Sexp.List
+           (Sexplib0.Sexp.Atom (("scannable" | "Scannable") as _tag__053_)
+           :: sexp_args__054_) as _sexp__052_ ->
+         (match sexp_args__054_ with
+          | arg0__055_ :: [] ->
+            let res0__056_ = Scannable_axes.t_of_sexp arg0__055_ in
+            Scannable res0__056_
+          | _ ->
+            Sexplib0.Sexp_conv_error.stag_incorrect_n_args
+              error_source__050_
+              _tag__053_
+              _sexp__052_)
        | Sexplib0.Sexp.Atom ("untagged_immediate" | "Untagged_immediate") ->
          Untagged_immediate
        | Sexplib0.Sexp.Atom ("float64" | "Float64") -> Float64
@@ -816,11 +1012,21 @@ module Definitions = struct
        | Sexplib0.Sexp.Atom ("vec256" | "Vec256") -> Vec256
        | Sexplib0.Sexp.Atom ("vec512" | "Vec512") -> Vec512
        | Sexplib0.Sexp.List
+           (Sexplib0.Sexp.Atom (("any" | "Any") as _tag__058_) :: sexp_args__059_) as
+         _sexp__057_ ->
+         (match sexp_args__059_ with
+          | arg0__060_ :: [] ->
+            let res0__061_ = Scannable_axes.t_of_sexp arg0__060_ in
+            Any res0__061_
+          | _ ->
+            Sexplib0.Sexp_conv_error.stag_incorrect_n_args
+              error_source__050_
+              _tag__058_
+              _sexp__057_)
+       | Sexplib0.Sexp.List
            (Sexplib0.Sexp.Atom
               ( "void"
               | "Void"
-              | "value"
-              | "Value"
               | "untagged_immediate"
               | "Untagged_immediate"
               | "float64"
@@ -843,17 +1049,19 @@ module Definitions = struct
               | "Vec256"
               | "vec512"
               | "Vec512" )
-           :: _) as sexp__021_ ->
-         Sexplib0.Sexp_conv_error.stag_no_args error_source__020_ sexp__021_
-       | Sexplib0.Sexp.List (Sexplib0.Sexp.List _ :: _) as sexp__019_ ->
-         Sexplib0.Sexp_conv_error.nested_list_invalid_sum error_source__020_ sexp__019_
-       | Sexplib0.Sexp.List [] as sexp__019_ ->
-         Sexplib0.Sexp_conv_error.empty_list_invalid_sum error_source__020_ sexp__019_
-       | sexp__019_ ->
+           :: _) as sexp__051_ ->
+         Sexplib0.Sexp_conv_error.stag_no_args error_source__050_ sexp__051_
+       | Sexplib0.Sexp.Atom ("scannable" | "Scannable" | "any" | "Any") as sexp__051_ ->
+         Sexplib0.Sexp_conv_error.stag_takes_args error_source__050_ sexp__051_
+       | Sexplib0.Sexp.List (Sexplib0.Sexp.List _ :: _) as sexp__049_ ->
+         Sexplib0.Sexp_conv_error.nested_list_invalid_sum error_source__050_ sexp__049_
+       | Sexplib0.Sexp.List [] as sexp__049_ ->
+         Sexplib0.Sexp_conv_error.empty_list_invalid_sum error_source__050_ sexp__049_
+       | sexp__049_ ->
          Sexplib0.Sexp_conv_error.unexpected_stag
-           error_source__020_
+           error_source__050_
            [ "Void"
-           ; "Value"
+           ; "Scannable"
            ; "Untagged_immediate"
            ; "Float64"
            ; "Float32"
@@ -865,8 +1073,9 @@ module Definitions = struct
            ; "Vec128"
            ; "Vec256"
            ; "Vec512"
+           ; "Any"
            ]
-           sexp__019_
+           sexp__049_
        : Sexplib0.Sexp.t -> t)
     ;;
 
@@ -875,7 +1084,9 @@ module Definitions = struct
     let sexp_of_t =
       (function
        | Void -> Sexplib0.Sexp.Atom "Void"
-       | Value -> Sexplib0.Sexp.Atom "Value"
+       | Scannable arg0__062_ ->
+         let res0__063_ = Scannable_axes.sexp_of_t arg0__062_ in
+         Sexplib0.Sexp.List [ Sexplib0.Sexp.Atom "Scannable"; res0__063_ ]
        | Untagged_immediate -> Sexplib0.Sexp.Atom "Untagged_immediate"
        | Float64 -> Sexplib0.Sexp.Atom "Float64"
        | Float32 -> Sexplib0.Sexp.Atom "Float32"
@@ -887,18 +1098,15 @@ module Definitions = struct
        | Vec128 -> Sexplib0.Sexp.Atom "Vec128"
        | Vec256 -> Sexplib0.Sexp.Atom "Vec256"
        | Vec512 -> Sexplib0.Sexp.Atom "Vec512"
+       | Any arg0__064_ ->
+         let res0__065_ = Scannable_axes.sexp_of_t arg0__064_ in
+         Sexplib0.Sexp.List [ Sexplib0.Sexp.Atom "Any"; res0__065_ ]
        : t -> Sexplib0.Sexp.t)
     ;;
 
     let _ = sexp_of_t
 
     [@@@end]
-  end
-
-  module Layout = struct
-    type t =
-      | Base of Base_sort.t
-      | Any
   end
 end
 
@@ -928,10 +1136,10 @@ module type Modes_lib = sig
       include Nonmodal
     end
 
-    (** Accepts both [separable] and [Separable] capitalization. *)
+    (** Accepts both [external_] and [External_] capitalization. *)
     val of_string : string -> t
 
-    (** Produces [separable] capitalization. *)
+    (** Produces [external_] capitalization. *)
     val to_string : t -> string
   end
 
@@ -940,7 +1148,6 @@ module type Modes_lib = sig
       include Jkind_mod
     end
 
-    val all : t list
     val t_of_sexp : Sexplib0.Sexp.t -> t
     val sexp_of_t : t -> Sexplib0.Sexp.t
 
@@ -951,14 +1158,50 @@ module type Modes_lib = sig
     val to_string : t -> string
   end
 
+  module Scannable_axes : sig
+    include module type of struct
+      include Scannable_axes
+    end
+
+    include Lattice with type t := t
+
+    module Axis : sig
+      type 'a t = 'a scannable_axis
+      type packed = P : 'a t -> packed [@@unboxed]
+
+      val all : packed list
+      val module_ : 'a t -> (module Total_lattice with type t = 'a)
+      val to_scannable_axis : 'a t -> 'a -> Scannable_axis.t
+      val of_scannable_axis : 'a t -> Scannable_axis.t -> 'a option
+    end
+
+    val get : t -> 'a Axis.t -> 'a
+    val set : t -> 'a Axis.t -> 'a -> t
+
+    (** When omitted, an axis is filled in with its top. *)
+    val of_scannable_axes : Scannable_axis.t list -> t
+  end
+
+  module Scannable_axis : sig
+    include module type of struct
+      include Scannable_axis
+    end
+
+    val of_string : string -> t
+    val to_string : t -> string
+  end
+
   module Layout : sig
     include module type of struct
       include Layout
     end
 
+    (** Layouts whose name is a single word *)
+    val all_abbreviations : t list
+
+    val le : t -> t -> bool
+    val equal : t -> t -> bool
     val compare : t -> t -> int
-    val t_of_sexp : Sexplib0.Sexp.t -> t
-    val sexp_of_t : t -> Sexplib0.Sexp.t
 
     (** Accepts both [value] and [Value] capitalization. *)
     val of_string : string -> t
@@ -1007,11 +1250,14 @@ module type Modes_lib = sig
   module Uniqueness : Axis with type t = uniqueness
   module Yielding : Axis with type t = yielding
 
-  (** Nonmodal jkind axes (soon to be nontrivialities) *)
+  (** Nonmodal jkind axes *)
 
   module Externality : Nonmodal_axis with type t = externality
-  module Nullability : Nonmodal_axis with type t = nullability
-  module Separability : Nonmodal_axis with type t = separability
+
+  (** Scannable axes *)
+
+  module Nullability : Total_lattice with type t = nullability
+  module Separability : Total_lattice with type t = separability
 
   module Optional : sig
     include Per_axis with type 'a wrapped := 'a option
@@ -1078,10 +1324,12 @@ module type Modes_lib = sig
     type 'a wrapper =
       | Modal : 'a Crossing.t * 'a Axis.t -> 'a wrapper
       | Nonmodal : 'a * 'a Nonmodal_axis.t -> 'a wrapper
+      | Scannable : 'a * 'a Scannable_axes.Axis.t -> 'a wrapper
 
     type t =
       { modals : Crossings.t
       ; nonmodals : Nonmodals.t
+      ; scannable_axes : Scannable_axes.t
       }
 
     type make_f = { f : 'a. 'a jkind_axis -> 'a wrapper }
@@ -1102,7 +1350,8 @@ module type Modes_lib = sig
   module Kind : sig
     type t =
       { layout : Layout.t
-      ; bounds : Jkind_modifiers.t
+      ; crossings : Crossings.t
+      ; nonmodals : Nonmodals.t
       }
 
     (** Interprets [ident] as a kind, expanding abbreviations known to the compiler (e.g.
@@ -1115,6 +1364,13 @@ module type Modes_lib = sig
         [(k) mod (mods)]. This can only strengthen the kind, and so will not necessarily
         set the bounds to be exactly the modifiers provided. *)
     val apply_mods : t -> Jkind_modifiers.t -> t
+
+    (** Applies scannable axes to the kind's layout --- produces the kind [(k) axes], e.g.
+        [value non_pointer]. *)
+    val apply_scannable_axes : t -> Scannable_axes.t -> t
+
+    (** The kind's crossings, nonmodals and scannable axes. *)
+    val modifiers : t -> Jkind_modifiers.t
 
     val is_subkind : t -> of_:t -> bool
 

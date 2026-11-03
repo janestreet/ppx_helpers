@@ -1,12 +1,29 @@
 open! Stdppx
 open Ppxlib
 open Ast_builder.Default
+module Base_lite = Base_lite_for_ppxes
+module Deriving_args = Deriving_args
 module Ox = Ox
 
 let ghoster =
   object
     inherit Ast_traverse.map
     method! location l = { l with loc_ghost = true }
+  end
+;;
+
+let strip_attributes =
+  object
+    inherit Ppxlib_jane.Ast_traverse.map
+    method! attributes _ = []
+  end
+;;
+
+let ghost_and_strip_attributes =
+  object
+    inherit Ppxlib_jane.Ast_traverse.map
+    method! location loc = { loc with loc_ghost = true }
+    method! attributes _ = []
   end
 ;;
 
@@ -311,4 +328,11 @@ let rec globalize_longident : Longident.t -> Longident.t = function
   | Lident s -> Lident (globalize_string s)
   | Ldot (t, s) -> Ldot (globalize_longident t, globalize_string s)
   | Lapply (t, t') -> Lapply (globalize_longident t, globalize_longident t')
+;;
+
+let type_param_conv_pats ~param_name ~param_type td =
+  List.map td.ptype_params ~f:(fun ((core_type, _) as param) ->
+    let loc = { core_type.ptyp_loc with loc_ghost = true } in
+    let name = get_type_param_name param in
+    ppat_constraint ~loc (pvar ~loc (param_name name.txt)) (param_type ~loc core_type))
 ;;

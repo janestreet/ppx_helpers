@@ -1,0 +1,5 @@
+(library
+ (name ppx_helpers_example)
+ (libraries)
+ (preprocess
+  (pps ppx_helpers_example_ppx)))

@@ -1,0 +1,7 @@
+(library
+ (name ppx_helpers_example_ppx)
+ (kind ppx_rewriter)
+ (libraries ppx_helpers ppxlib ppxlib.stdppx)
+ (ppx_runtime_libraries sexplib0)
+ (preprocess
+  (pps ppx_let ppxlib.metaquot)))
