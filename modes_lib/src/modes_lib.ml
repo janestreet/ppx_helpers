@@ -88,23 +88,172 @@ module Nonmodal = struct
   include Make_stringable (Nonmodal)
 end
 
+module Make_total_lattice (Input : sig
+    type t
+
+    val all : t list
+  end) : Total_lattice with type t = Input.t = struct
+  include Input
+
+  let compare : t -> t -> int = Stdlib.compare
+  let join : t -> t -> t = Stdlib.max
+  let meet : t -> t -> t = Stdlib.min
+
+  let reduce op ts =
+    match ts with
+    | [] -> None
+    | hd :: tl -> Some (List.fold_left tl ~init:hd ~f:op)
+  ;;
+
+  let join_list ts = reduce join ts
+  let meet_list ts = reduce meet ts
+  let top = join_list all |> Option.get
+  let bottom = meet_list all |> Option.get
+  let le t1 t2 = compare t1 t2 <= 0
+  let equal t1 t2 = compare t1 t2 = 0
+end
+
+module Nullability = Make_total_lattice (struct
+    type t = nullability
+
+    let all = all_of_nullability
+  end)
+
+module Separability = Make_total_lattice (struct
+    type t = separability
+
+    let all = all_of_separability
+  end)
+
+module Scannable_axes = struct
+  include Scannable_axes
+
+  let top = { nullability = Nullability.top; separability = Separability.top }
+  let bottom = { nullability = Nullability.bottom; separability = Separability.bottom }
+
+  let join t1 t2 =
+    { nullability = Nullability.join t1.nullability t2.nullability
+    ; separability = Separability.join t1.separability t2.separability
+    }
+  ;;
+
+  let meet t1 t2 =
+    { nullability = Nullability.meet t1.nullability t2.nullability
+    ; separability = Separability.meet t1.separability t2.separability
+    }
+  ;;
+
+  let le
+    { nullability = nullability1; separability = separability1 }
+    { nullability = nullability2; separability = separability2 }
+    =
+    Nullability.le nullability1 nullability2
+    && Separability.le separability1 separability2
+  ;;
+
+  let equal
+    { nullability = nullability1; separability = separability1 }
+    { nullability = nullability2; separability = separability2 }
+    =
+    Nullability.equal nullability1 nullability2
+    && Separability.equal separability1 separability2
+  ;;
+
+  module Axis = struct
+    type 'a t = 'a scannable_axis
+    type packed = P : 'a t -> packed [@@unboxed]
+
+    let all = [ P Nullability; P Separability ]
+
+    let module_ : type a. a t -> (module Total_lattice with type t = a) = function
+      | Nullability -> (module Nullability)
+      | Separability -> (module Separability)
+    ;;
+
+    let to_scannable_axis : type a. a t -> a -> Scannable_axis.t =
+      fun axis value ->
+      match axis with
+      | Nullability -> Scannable_axis.Nullability value
+      | Separability -> Scannable_axis.Separability value
+    ;;
+
+    let of_scannable_axis : type a. a t -> Scannable_axis.t -> a option =
+      fun axis value ->
+      match axis, value with
+      | Nullability, Nullability n -> Some n
+      | Separability, Separability s -> Some s
+      | Nullability, Separability _ | Separability, Nullability _ -> None
+    ;;
+  end
+
+  let of_scannable_axes values =
+    let axis (type a) (axis : a Axis.t) : a =
+      let module M = (val Axis.module_ axis) in
+      match List.filter_map values ~f:(Axis.of_scannable_axis axis) with
+      | [] -> M.top
+      | [ value ] -> value
+      | _ :: _ :: _ ->
+        failwith
+          "[Modes_lib.Scannable_axes.of_scannable_axes]: multiple inputs from same axis"
+    in
+    { nullability = axis Nullability; separability = axis Separability }
+  ;;
+
+  let get : type a. t -> a Axis.t -> a =
+    fun t axis ->
+    match axis with
+    | Nullability -> t.nullability
+    | Separability -> t.separability
+  ;;
+
+  let set : type a. t -> a Axis.t -> a -> t =
+    fun t axis value ->
+    match axis with
+    | Nullability -> { t with nullability = value }
+    | Separability -> { t with separability = value }
+  ;;
+end
+
+module Scannable_axis = struct
+  module T = struct
+    include Scannable_axis
+
+    let t_of_sexp sexp =
+      try Nullability (nullability_of_sexp sexp) with
+      | _ -> Separability (separability_of_sexp sexp)
+    ;;
+
+    let sexp_of_t = function
+      | Nullability n -> sexp_of_nullability n
+      | Separability s -> sexp_of_separability s
+    ;;
+
+    let non_redundant t =
+      match t with
+      | Nullability n -> if Nullability.equal n Nullability.top then [] else [ t ]
+      | Separability s -> if Separability.equal s Separability.top then [] else [ t ]
+    ;;
+  end
+
+  include T
+  include Make_stringable (T)
+end
+
 module Jkind_mod = struct
   module T = struct
     include Jkind_mod
 
-    let all =
-      List.map ~f:(fun x -> Modal x) Modal.all
-      @ List.map ~f:(fun x -> Nonmodal x) Nonmodal.all
-    ;;
-
     let t_of_sexp sexp =
       try Modal (Modal.t_of_sexp sexp) with
-      | _ -> Nonmodal (Nonmodal.t_of_sexp sexp)
+      | _ ->
+        (try Nonmodal (Nonmodal.t_of_sexp sexp) with
+         | _ -> Scannable_axis (Scannable_axis.t_of_sexp sexp))
     ;;
 
     let sexp_of_t = function
       | Modal x -> Modal.sexp_of_t x
       | Nonmodal x -> Nonmodal.sexp_of_t x
+      | Scannable_axis x -> Scannable_axis.sexp_of_t x
     ;;
   end
 
@@ -113,27 +262,120 @@ module Jkind_mod = struct
 end
 
 module Layout = struct
-  module T = struct
-    include Layout
+  include Layout
 
-    let compare l1 l2 = Stdlib.compare l1 l2
+  let apply_scannable_axes t axes : t =
+    match t with
+    | Scannable axes' -> Scannable (Scannable_axes.meet axes' axes)
+    | Any axes' -> Any (Scannable_axes.meet axes' axes)
+    | Void
+    | Untagged_immediate
+    | Float64
+    | Float32
+    | Word
+    | Bits8
+    | Bits16
+    | Bits32
+    | Bits64
+    | Vec128
+    | Vec256
+    | Vec512 -> t
+  ;;
 
-    let sexp_of_t = function
-      | Base x -> Base_sort.sexp_of_t x
-      | Any -> Sexplib0.Sexp.Atom "Any"
-    ;;
+  let apply_scannable_axis t axis =
+    apply_scannable_axes t (Scannable_axes.of_scannable_axes [ axis ])
+  ;;
 
-    let t_of_sexp sexp =
-      try Base (Base_sort.t_of_sexp sexp) with
-      | _ ->
-        (match sexp with
-         | Atom ("any" | "Any") -> Any
-         | _ -> failwith ("Invalid layout\n" ^ Sexplib0.Sexp.to_string sexp))
-    ;;
-  end
+  let le t1 t2 =
+    match t2 with
+    | Any sa2 ->
+      (match t1 with
+       | Scannable sa1 | Any sa1 -> Scannable_axes.le sa1 sa2
+       | _ -> true)
+    | Scannable sa2 ->
+      (match t1 with
+       | Scannable sa1 -> Scannable_axes.le sa1 sa2
+       | _ -> false)
+    | Void
+    | Untagged_immediate
+    | Float64
+    | Float32
+    | Word
+    | Bits8
+    | Bits16
+    | Bits32
+    | Bits64
+    | Vec128
+    | Vec256
+    | Vec512 -> Stdlib.( = ) t1 t2
+  ;;
 
-  include T
-  include Make_stringable (T)
+  let equal t1 t2 = le t1 t2 && le t2 t1
+  let compare (t1 : t) t2 = Stdlib.compare t1 t2
+
+  let to_string : t -> string = function
+    | ( Void
+      | Untagged_immediate
+      | Float64
+      | Float32
+      | Word
+      | Bits8
+      | Bits16
+      | Bits32
+      | Bits64
+      | Vec128
+      | Vec256
+      | Vec512 ) as t ->
+      t |> sexp_of_t |> Sexplib0.Sexp.to_string |> String.lowercase_ascii
+    | Any { nullability; separability } ->
+      [ "any" ]
+      @ (Scannable_axis.non_redundant (Separability separability)
+         |> List.map ~f:Scannable_axis.to_string)
+      @ (Scannable_axis.non_redundant (Nullability nullability)
+         |> List.map ~f:Scannable_axis.to_string)
+      |> String.concat ~sep:" "
+    (* Scannable layouts are special-cased to print in terms of [value] *)
+    | Scannable { nullability = Non_null; separability = Non_pointer } ->
+      "value non_pointer"
+    | Scannable { nullability = Non_null; separability = Non_pointer64 } ->
+      "value non_pointer64"
+    | Scannable { nullability = Non_null; separability = Non_float } -> "value non_float"
+    | Scannable { nullability = Non_null; separability = Separable } -> "value"
+    | Scannable { nullability = Non_null; separability = Maybe_separable } ->
+      "value_maybe_separable"
+    | Scannable { nullability = Maybe_null; separability = Non_pointer } ->
+      "value_or_null non_pointer"
+    | Scannable { nullability = Maybe_null; separability = Non_pointer64 } ->
+      "value_or_null non_pointer64"
+    | Scannable { nullability = Maybe_null; separability = Non_float } ->
+      "value_or_null non_float"
+    | Scannable { nullability = Maybe_null; separability = Separable } ->
+      "value_maybe_null"
+    | Scannable { nullability = Maybe_null; separability = Maybe_separable } ->
+      "value_or_null"
+  ;;
+
+  let abbreviations : (string * t) list =
+    List.filter_map all ~f:(fun layout ->
+      let str = to_string layout in
+      if not (String.contains str ' ') then Some (str, layout) else None)
+  ;;
+
+  let all_abbreviations = List.map abbreviations ~f:snd
+
+  let of_string string =
+    match
+      String.split_on_char ~sep:' ' string
+      |> List.filter ~f:(fun s -> String.length s > 0)
+    with
+    | [] -> failwith ("[Modes_lib.Layout.of_string]: invalid layout " ^ string)
+    | name :: axes ->
+      (match List.assoc_opt (String.lowercase_ascii name) abbreviations with
+       | None -> failwith ("[Modes_lib.Layout.of_string]: invalid layout " ^ string)
+       | Some t ->
+         List.fold_left axes ~init:t ~f:(fun t axis ->
+           apply_scannable_axis t (Scannable_axis.of_string axis)))
+  ;;
 end
 
 module type Axis =
@@ -209,24 +451,9 @@ module Make_nonmodal_axis (Input : sig
     val all : t list
     val of_nonmodal : Nonmodal.t -> t option
   end) : Nonmodal_axis with type t = Input.t = struct
-  include Input
+  include Make_total_lattice (Input)
 
-  let compare : t -> t -> int = Stdlib.compare
-  let join : t -> t -> t = Stdlib.max
-  let meet : t -> t -> t = Stdlib.min
-
-  let reduce op ts =
-    match ts with
-    | [] -> None
-    | hd :: tl -> Some (List.fold_left tl ~init:hd ~f:op)
-  ;;
-
-  let join_list ts = reduce join ts
-  let meet_list ts = reduce meet ts
-  let top = join_list all |> Option.get
-  let bottom = meet_list all |> Option.get
-  let le t1 t2 = compare t1 t2 <= 0
-  let equal t1 t2 = compare t1 t2 = 0
+  let of_nonmodal = Input.of_nonmodal
 
   let to_nonmodal t =
     List.find Nonmodal.all ~f:(fun nonmodal ->
@@ -389,34 +616,6 @@ module Externality = Make_nonmodal_axis (struct
       | External_ -> Some External_
       | External64 -> Some External64
       | Internal -> Some Internal
-      | _ -> None
-    ;;
-  end)
-
-module Nullability = Make_nonmodal_axis (struct
-    type t = nullability
-
-    let all = [ Non_null; Maybe_null ]
-
-    let of_nonmodal : Nonmodal.t -> t option = function
-      | Non_null -> Some Non_null
-      | Maybe_null -> Some Maybe_null
-      | _ -> None
-    ;;
-  end)
-
-module Separability = Make_nonmodal_axis (struct
-    type t = separability
-
-    let all = [ Non_pointer; Non_pointer64; Non_float; Separable; Maybe_separable ]
-
-    let of_nonmodal : Nonmodal.t -> t option = function
-      | Non_pointer -> Some Non_pointer
-      | Non_pointer64 -> Some Non_pointer64
-      | Non_float -> Some Non_float
-      | Separable -> Some Separable
-      | Maybe_separable -> Some Maybe_separable
-      | _ -> None
     ;;
   end)
 
@@ -482,12 +681,10 @@ module Nonmodal_axis = struct
   type 'a t = 'a nonmodal_axis
   type packed = P : 'a t -> packed [@@unboxed]
 
-  let all = [ P Externality; P Nullability; P Separability ]
+  let all = [ P Externality ]
 
   let module_ : type a. a t -> (module Nonmodal_axis with type t = a) = function
     | Externality -> (module Externality)
-    | Nullability -> (module Nullability)
-    | Separability -> (module Separability)
   ;;
 end
 
@@ -499,6 +696,8 @@ module Jkind_axis = struct
     List.map Axis.all ~f:(fun (P axis : Axis.packed) -> P (Modal axis))
     @ List.map Nonmodal_axis.all ~f:(fun (P axis : Nonmodal_axis.packed) ->
       P (Nonmodal axis))
+    @ List.map Scannable_axes.Axis.all ~f:(fun (P axis : Scannable_axes.Axis.packed) ->
+      P (Scannable axis))
   ;;
 end
 
@@ -918,27 +1117,18 @@ module Nonmodals = struct
 
   type make_f = { f : 'a. 'a nonmodal_axis -> 'a }
 
-  let make { f } =
-    { externality = f Externality
-    ; nullability = f Nullability
-    ; separability = f Separability
-    }
-  ;;
+  let make { f } = { externality = f Externality }
 
   let get : type a. t -> a nonmodal_axis -> a =
     fun t axis ->
     match axis with
     | Externality -> t.externality
-    | Nullability -> t.nullability
-    | Separability -> t.separability
   ;;
 
   let set : type a. t -> a nonmodal_axis -> a -> t =
-    fun t axis x ->
+    fun { externality = _ } axis x ->
     match axis with
-    | Externality -> { t with externality = x }
-    | Nullability -> { t with nullability = x }
-    | Separability -> { t with separability = x }
+    | Externality -> { externality = x }
   ;;
 
   let of_nonmodals nonmodals =
@@ -1024,11 +1214,13 @@ end
 module Jkind_modifiers = struct
   type 'a wrapper =
     | Modal : 'a Crossing.t * 'a Axis.t -> 'a wrapper
-    | Nonmodal : 'a * 'a nonmodal_axis -> 'a wrapper
+    | Nonmodal : 'a * 'a Nonmodal_axis.t -> 'a wrapper
+    | Scannable : 'a * 'a Scannable_axes.Axis.t -> 'a wrapper
 
   type t =
     { modals : Crossings.t
     ; nonmodals : Nonmodals.t
+    ; scannable_axes : Scannable_axes.t
     }
 
   type make_f = { f : 'a. 'a jkind_axis -> 'a wrapper }
@@ -1040,7 +1232,7 @@ module Jkind_modifiers = struct
               (fun (type a) (axis : a Axis.t) ->
                 match axis, f (Modal axis) with
                 | _, Modal (m, _) -> m
-                | _, Nonmodal _ -> .)
+                | _, (Nonmodal _ | Scannable _) -> .)
           }
     ; nonmodals =
         Nonmodals.make
@@ -1048,8 +1240,15 @@ module Jkind_modifiers = struct
               (fun (type a) (axis : a nonmodal_axis) ->
                 match axis, f (Nonmodal axis) with
                 | _, Nonmodal (m, _) -> m
-                | _, Modal _ -> .)
+                | _, (Modal _ | Scannable _) -> .)
           }
+    ; scannable_axes =
+        (let scannable (type a) (axis : a scannable_axis) : a =
+           match axis, f (Scannable axis) with
+           | _, Scannable (m, _) -> m
+           | _, (Modal _ | Nonmodal _) -> .
+         in
+         { nullability = scannable Nullability; separability = scannable Separability })
     }
   ;;
 
@@ -1058,6 +1257,7 @@ module Jkind_modifiers = struct
     match axis with
     | Modal axis -> Crossings.get t.modals axis |> Crossing.unwrap
     | Nonmodal axis -> Nonmodals.get t.nonmodals axis
+    | Scannable axis -> Scannable_axes.get t.scannable_axes axis
   ;;
 
   let set : type a. t -> a wrapper -> t =
@@ -1065,17 +1265,28 @@ module Jkind_modifiers = struct
     match x with
     | Modal (x, axis) -> { t with modals = Crossings.set t.modals axis x }
     | Nonmodal (x, axis) -> { t with nonmodals = Nonmodals.set t.nonmodals axis x }
+    | Scannable (x, axis) ->
+      { t with scannable_axes = Scannable_axes.set t.scannable_axes axis x }
   ;;
 
   let of_jkind_mods jkind_mods =
-    let modals, nonmodals =
-      List.partition_map jkind_mods ~f:(function
-        | (Modal m : Jkind_mod.t) -> Left m
-        | Nonmodal j -> Right j)
-    in
-    let modals = Crossings.of_modals modals in
-    let nonmodals = Nonmodals.of_nonmodals nonmodals in
-    { modals; nonmodals }
+    let filter (f : Jkind_mod.t -> _ option) = List.filter_map jkind_mods ~f in
+    { modals =
+        Crossings.of_modals
+          (filter (function
+            | Modal m -> Some m
+            | Nonmodal _ | Scannable_axis _ -> None))
+    ; nonmodals =
+        Nonmodals.of_nonmodals
+          (filter (function
+            | Nonmodal n -> Some n
+            | Modal _ | Scannable_axis _ -> None))
+    ; scannable_axes =
+        Scannable_axes.of_scannable_axes
+          (filter (function
+            | Scannable_axis s -> Some s
+            | Modal _ | Nonmodal _ -> None))
+    }
   ;;
 
   let to_jkind_mods t =
@@ -1083,6 +1294,10 @@ module Jkind_modifiers = struct
     let nonmodals = Nonmodals.to_nonmodals t.nonmodals in
     List.map modals ~f:(fun m : Jkind_mod.t -> Modal m)
     @ List.map nonmodals ~f:(fun m : Jkind_mod.t -> Nonmodal m)
+    @ (Scannable_axis.non_redundant (Nullability t.scannable_axes.nullability)
+       |> List.map ~f:(fun s : Jkind_mod.t -> Scannable_axis s))
+    @ (Scannable_axis.non_redundant (Separability t.scannable_axes.separability)
+       |> List.map ~f:(fun s : Jkind_mod.t -> Scannable_axis s))
   ;;
 
   let to_jkind_mods_explicit t =
@@ -1090,68 +1305,90 @@ module Jkind_modifiers = struct
     let nonmodals = Nonmodals.to_nonmodals_explicit t.nonmodals in
     List.map modals ~f:(fun m : Jkind_mod.t -> Modal m)
     @ List.map nonmodals ~f:(fun m : Jkind_mod.t -> Nonmodal m)
+    @ [ (Scannable_axis (Nullability t.scannable_axes.nullability) : Jkind_mod.t)
+      ; Scannable_axis (Separability t.scannable_axes.separability)
+      ]
   ;;
 end
 
 module Kind = struct
   type t =
     { layout : Layout.t
-    ; bounds : Jkind_modifiers.t
+    ; crossings : Crossings.t
+    ; nonmodals : Nonmodals.t
     }
 
   let apply_mods t (per_jkind_axis : Jkind_modifiers.t) =
-    { t with
-      bounds =
-        { modals = Crossings.meet t.bounds.modals per_jkind_axis.modals
-        ; nonmodals = Nonmodals.meet t.bounds.nonmodals per_jkind_axis.nonmodals
-        }
+    { layout = Layout.apply_scannable_axes t.layout per_jkind_axis.scannable_axes
+    ; crossings = Crossings.meet t.crossings per_jkind_axis.modals
+    ; nonmodals = Nonmodals.meet t.nonmodals per_jkind_axis.nonmodals
     }
   ;;
 
-  let interpreted_abbreviations : (string * (Base_sort.t * Jkind_mod.t list)) list =
+  let apply_scannable_axes t axes =
+    { t with layout = Layout.apply_scannable_axes t.layout axes }
+  ;;
+
+  let modifiers { layout; crossings; nonmodals } : Jkind_modifiers.t =
+    let scannable_axes =
+      match (layout : Layout.t) with
+      | Scannable axes | Any axes -> axes
+      | Void
+      | Untagged_immediate
+      | Float64
+      | Float32
+      | Word
+      | Bits8
+      | Bits16
+      | Bits32
+      | Bits64
+      | Vec128
+      | Vec256
+      | Vec512 -> Scannable_axes.bottom
+    in
+    { modals = crossings; nonmodals; scannable_axes }
+  ;;
+
+  let interpreted_abbreviations : (string * (Layout.t * Jkind_mod.t list)) list =
     let modals = List.map ~f:(fun m : Jkind_mod.t -> Modal m) in
     let nonmodals = List.map ~f:(fun j : Jkind_mod.t -> Nonmodal j) in
+    let scannable = List.map ~f:(fun s : Jkind_mod.t -> Scannable_axis s) in
     let immediate_crossings =
       Crossings.set Crossings.bottom Staticity (Crossings.get Crossings.top Staticity)
     in
-    [ "value_or_null", (Value, [])
-    ; "value", (Value, nonmodals [ Non_null; Separable ])
-    ; ( "immutable_data"
-      , ( Value
+    let value_or_null : Layout.t = Scannable Scannable_axes.top in
+    [ ( "immutable_data"
+      , ( value_or_null
         , modals [ Many; Portable; Forkable; Unyielding; Contended; Stateless; Immutable ]
-          @ nonmodals [ Non_null; Non_float ] ) )
+          @ scannable [ Nullability Non_null; Separability Non_float ] ) )
     ; ( "sync_data"
-      , ( Value
+      , ( value_or_null
         , modals [ Many; Portable; Forkable; Unyielding; Contended; Stateless ]
-          @ nonmodals [ Non_null; Non_float ] ) )
+          @ scannable [ Nullability Non_null; Separability Non_float ] ) )
     ; ( "mutable_data"
-      , ( Value
+      , ( value_or_null
         , modals [ Many; Portable; Forkable; Unyielding; Stateless ]
-          @ nonmodals [ Non_null; Non_float ] ) )
+          @ scannable [ Nullability Non_null; Separability Non_float ] ) )
     ; ( "immediate"
-      , ( Value
+      , ( value_or_null
         , modals (Crossings.to_modals immediate_crossings)
-          @ nonmodals (Nonmodals.to_nonmodals Nonmodals.bottom) ) )
+          @ nonmodals (Nonmodals.to_nonmodals Nonmodals.bottom)
+          @ scannable [ Nullability Non_null; Separability Non_pointer ] ) )
     ; ( "immediate_or_null"
-      , ( Value
+      , ( value_or_null
         , modals (Crossings.to_modals immediate_crossings)
-          @ nonmodals [ Non_pointer; External_ ] ) )
+          @ nonmodals [ External_ ]
+          @ scannable [ Separability Non_pointer ] ) )
     ; ( "immediate64"
-      , ( Value
+      , ( value_or_null
         , modals (Crossings.to_modals immediate_crossings)
-          @ nonmodals [ Non_null; Non_pointer64; External64 ] ) )
+          @ nonmodals [ External64 ]
+          @ scannable [ Nullability Non_null; Separability Non_pointer64 ] ) )
     ; ( "immediate64_or_null"
-      , ( Value
+      , ( value_or_null
         , modals (Crossings.to_modals immediate_crossings)
-          @ nonmodals [ Non_pointer64; External64 ] ) )
-    ; "untagged_immediate", (Untagged_immediate, nonmodals [ Non_null; Non_float ])
-    ; "float64", (Float64, nonmodals [ Non_null; Non_float ])
-    ; "float32", (Float32, nonmodals [ Non_null; Non_float ])
-    ; "word", (Word, nonmodals [ Non_null; Non_float ])
-    ; "bits8", (Bits8, nonmodals [ Non_null; Non_float ])
-    ; "bits16", (Bits16, nonmodals [ Non_null; Non_float ])
-    ; "bits32", (Bits32, nonmodals [ Non_null; Non_float ])
-    ; "bits64", (Bits64, nonmodals [ Non_null; Non_float ])
+          @ nonmodals [ External64 ]
+          @ scannable [ Separability Non_pointer64 ] ) )
     ]
   ;;
 
@@ -1159,15 +1396,21 @@ module Kind = struct
     List.find_opt interpreted_abbreviations ~f:(fun (abbrev, _) ->
       String.equal abbrev ident)
     |> (function
-          | Some (_, (sort, mod_)) -> Layout.Base sort, mod_
+          | Some (_, (layout, mod_)) -> layout, mod_
           | None -> Layout.of_string ident, [])
-    |> fun (layout, mod_) -> { layout; bounds = Jkind_modifiers.of_jkind_mods mod_ }
+    |> fun (layout, mod_) ->
+    apply_mods
+      { layout; crossings = Crossings.top; nonmodals = Nonmodals.top }
+      (Jkind_modifiers.of_jkind_mods mod_)
   ;;
 
-  let is_subkind t ~of_ =
-    Layout.compare t.layout of_.layout = 0
-    && Crossings.le t.bounds.modals of_.bounds.modals
-    && Nonmodals.le t.bounds.nonmodals of_.bounds.nonmodals
+  let is_subkind
+    { layout = layout1; crossings = crossings1; nonmodals = nonmodals1 }
+    ~of_:{ layout = layout2; crossings = crossings2; nonmodals = nonmodals2 }
+    =
+    Layout.le layout1 layout2
+    && Crossings.le crossings1 crossings2
+    && Nonmodals.le nonmodals1 nonmodals2
   ;;
 
   module Private = struct

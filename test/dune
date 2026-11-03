@@ -1,0 +1,5 @@
+(library
+ (name ppx_helpers_test)
+ (libraries base expect_test_helpers_base ppx_helpers ppx_helpers_example)
+ (preprocess
+  (pps ppx_jane ppx_quick_test -compare-require-explicit-locality)))

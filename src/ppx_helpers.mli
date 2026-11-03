@@ -1,11 +1,29 @@
 open! Stdppx
 open Ppxlib
+module Base_lite = Base_lite_for_ppxes
+module Deriving_args = Deriving_args
 module Ox = Ox
 
 (** Common utility functions for PPXs that we may eventually upstream to ppxlib *)
 
 (** Ast-mapper that ghosts all locations *)
 val ghoster : Ast_traverse.map
+
+(** [strip_attributes] maps over the AST and removes attributes attached to nodes. This
+    function is useful for reusing source syntax in generated code.
+
+    It will not remove floating attributes such as
+    {[
+      [@@@warning "-32"]
+
+      let x = 1
+    ]}
+
+    but will remove attributes like [(int [@foo])]. *)
+val strip_attributes : Ppxlib_jane.Ast_traverse.map
+
+(** [ghost_and_strip_attributes] combines [ghoster] and [strip_attributes]. *)
+val ghost_and_strip_attributes : Ppxlib_jane.Ast_traverse.map
 
 (** Generate a fresh identifier as with [gen_symbol] and return a [ppat_var] and
     [pexp_ident] pair with that identifier *)
@@ -164,3 +182,15 @@ val combinator_type_of_type_declaration
   -> Polytype.t
 
 val globalize_longident : Longident.t @ local -> Longident.t
+
+(** [type_param_conv_pats] creates one pattern per type parameter, each named by
+    [param_name] and constrained by [param_type]. These are intended for use as function
+    arguments of a value derived on a parameterized type.
+
+    As an example, [ppx_compare] might use [param_name] and [param_type] to transform ['a]
+    into the variable [_cmp__a] and into the type ['a -> 'a -> int]. *)
+val type_param_conv_pats
+  :  param_name:(label -> label)
+  -> param_type:(loc:location -> core_type -> core_type)
+  -> type_declaration
+  -> pattern list

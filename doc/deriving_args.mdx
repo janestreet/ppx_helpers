@@ -1,0 +1,116 @@
+# deriving_args
+
+# `Deriving_args`
+
+`Ppx_helpers.Deriving_args` cuts down the boilerplate of writing a `[@@deriving]`
+generator that takes arguments. It makes it so that you can work with a custom type
+representing the flags and arguments associated with the ppx deriver. This improves on
+`Ppxlib.Deriving.Args`, which uses a curried argument list instead.
+
+In general, a deriver's arguments are defined by a spec, which is built from `flag` and
+`arg` (for flags and arguments to the deriver, respectively). This finished spec is then
+packed (via `pack`) and turned into a generator (via `to_generator_v2` or
+`to_generator_v1`), which can then be registered.
+
+This README is a tutorial. The precise interface lives in `../src/deriving_args.mli`.
+
+## Example
+
+Suppose we want to write a deriver that prints records for debugging. It takes in a flag
+`~verbose` indicating if the field names should be printed and an argument `~prefix` for
+labeling the record. We want to package this information into a config type, which in this
+case, is a record:
+
+```ocaml env=demo
+type config =
+  { verbose : bool; prefix : string option }
+```
+
+`Deriving_args` will let us use this config type to write the deriver. To actually
+accomplish this, we need to declare the arguments as a spec. A spec can be written using
+`ppx_let`'s `let%map_open` syntax.
+
+```ocaml env=demo
+open Ppxlib
+module Deriving_args = Ppx_helpers.Deriving_args
+
+let spec () =
+  let%map_open.Deriving_args verbose = flag "verbose"
+  and prefix = arg "prefix" Ast_pattern.(estring __) in
+  { verbose; prefix }
+;;
+```
+
+- `flag name` is an optional flag `~name`. It produces a `bool`: `true` when present.
+- `arg name pattern` is an optional argument `~name:<value>`. The `pattern` (an
+  `Ast_pattern`, e.g. `estring __` or `eint __`) says how to read the value out of the
+  AST. It produces an `'a option`, which is `None` when the argument is absent.
+
+When writing the spec, each `and`-bound name declares one flag or argument, and the body
+assembles the parsed values into a config type of choice (in this case, a record).
+
+We define `spec` as a function rather than a value because of the value restriction in
+OCaml. Essentially, `let spec = ...` would fix the type `'output` when it is first used.
+By writing `let spec () = ...` as a function, `'output` remains polymorphic, and we can
+have multiple output types, which may be useful in defining the signature and structure
+generators.
+
+The generator now receives the assembled `config`:
+
+```ocaml env=demo
+let expand ~ctxt (rec_flag, type_declarations) { verbose; prefix } =
+  (* Build the list of generated [structure_item]s here, using [verbose] and
+     [prefix]. This does not fully create the debug string and is not a full example of a
+     deriver. *)
+  []
+;;
+
+let str_type_decl =
+  Deriving_args.to_generator_v2 (Deriving_args.pack (spec ())) ~f:expand
+;;
+
+let () = Deriving.add "debug" ~str_type_decl |> Deriving.ignore
+```
+
+The function `to_generator_v2` takes in a "packed" spec, as it does not need the `'fn`
+type parameter.
+
+We can now use the ppx, passing these arguments:
+
+```ocaml env=demo
+type t = { x : int; y : int } [@@deriving debug ~verbose ~prefix:"point"]
+```
+
+For a complete, buildable deriver written this way, see `lib/ppx_helpers/example/ppx`.
+This includes both the structure generator and the signature generator.
+
+## Comparison with `Ppxlib.Deriving.Args`
+
+Without this library, ppx derivers are created directly with
+`('fn, 'output) Deriving.Args.t`, which is built with combinators. The arguments look like
+this:
+
+```ocaml env=ppxlib
+open Ppxlib
+let args = Deriving.Args.(empty +> flag "verbose" +> arg "prefix" Ast_pattern.(estring __))
+(* args : (bool -> string option -> 'output, 'output) Deriving.Args.t *)
+```
+
+In this case, the generator has to be a curried function where the parameters match the
+argument order exactly:
+
+```ocaml env=ppxlib
+let expand ~ctxt (rec_flag, type_declarations) (verbose : bool) (prefix : string option) =
+  (* The same generated code as before *)
+  []
+;;
+
+let str_type_decl = Deriving.Generator.V2.make args expand
+let () = Deriving.add "debug_via_ppxlib" ~str_type_decl |> Ppxlib.Deriving.ignore
+```
+
+This is error-prone because two arguments of the same type can be silently swapped between
+the argument registration and writing `expand`, which would not be caught by the compiler.
+Additionally, any change (e.g. adding / removing / reordering parameters) has to be
+mirrored in both places. With `Deriving_args`, the generator only receives the config, so
+it's not possible to desync the arguments and the generator.

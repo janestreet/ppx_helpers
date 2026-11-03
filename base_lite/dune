@@ -1,0 +1,14 @@
+(library
+ (foreign_stubs
+  (language c)
+  (names base_lite_stubs))
+ (name base_lite_for_ppxes)
+ (public_name ppx_helpers.base_lite)
+ (libraries base_internalhash_types basement nonempty_list_type sexplib0
+   ppxlib.stdppx)
+ (preprocess no_preprocessing)
+ (js_of_ocaml
+  (javascript_files runtime.js))
+ (wasm_of_ocaml
+  (javascript_files runtime.js)
+  (wasm_files runtime.wat)))
